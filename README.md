@@ -22,7 +22,13 @@ Developed by **Kob AI** — [www.kob-ai.dev](https://www.kob-ai.dev) | Developer
 - **Bun** runtime installed ([Install Bun](https://bun.sh/docs/installation))
 - KOB AI API credentials (API Key)
 
-### Installation
+### Installation via npm (recommended)
+
+```bash
+npm install -g kob-cli
+```
+
+### Installation from source
 
 1. Clone or navigate to the kob-cli directory:
 ```bash

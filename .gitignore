@@ -2,15 +2,22 @@
 node_modules/
 
 # Build output
-*.exe
+kob-cli
 kob-cli.exe
+kob-cli@*
+bun
+npm
 dist/
 build/
 
-# Environment files
+# Environment files (contains API keys)
 .env
 .env.local
 .env.*.local
+.env.*
+
+# npm token (contains secret)
+.npmrc
 
 # IDE
 .vscode/
@@ -28,5 +35,5 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Bun
-bun.lockb
+# Bun lockfile
+bun.lock
