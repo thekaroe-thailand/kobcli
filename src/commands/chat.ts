@@ -4,61 +4,52 @@ import ora from 'ora';
 import { KobApiClient } from '../utils/api.js';
 import { getConfig } from '../utils/config.js';
 import { handleApiError, validateRequired } from '../utils/errors.js';
-import { formatUsage } from '../utils/format.js';
-import type { ChatResponse, ChatMessage } from '../types/index.js';
+
+function formatV2Model(provider: string, model: string): string {
+    const m = model || 'deepseek-chat';
+    return m.includes('/') ? m : `${provider.toLowerCase()}/${m}`;
+}
 
 export const chatCommand = new Command('chat')
     .description('Send a message to AI')
     .argument('<message>', 'Message to send to AI')
     .option('-p, --provider <provider>', 'AI provider (DeepSeek, OpenRouter, DeepInfra)', 'DeepSeek')
-    .option('-m, --model <model>', 'Model ID', 'deepseek-chat')
+    .option('-m, --model <model>', 'Model ID')
     .option('-t, --temperature <temperature>', 'Temperature (0.0-2.0)', '0.7')
     .option('--max-tokens <maxTokens>', 'Maximum tokens', '4096')
-    .option('--project-id <projectId>', 'Project ID for rules')
     .option('--system-prompt <systemPrompt>', 'System prompt')
     .action(async (message, opts) => {
-        const spinner = ora('Sending message to AI...').start();
+        const spinner = ora('Thinking...').start();
 
         try {
             const config = getConfig();
             const client = new KobApiClient(config);
 
             validateRequired(opts.provider, 'Provider');
-            validateRequired(opts.model, 'Model');
+            const model = formatV2Model(opts.provider, opts.model || config.modelId);
 
-            const messages: ChatMessage[] = [
-                { role: 'user', content: message }
-            ];
-
-            const body: any = {
-                provider: opts.provider,
-                model: opts.model,
-                messages,
-                temperature: parseFloat(opts.temperature),
-                max_tokens: parseInt(opts.maxTokens),
-            };
-
-            if (opts.projectId) {
-                body.project_id = opts.projectId;
+            let fullContent = '';
+            for await (const chunk of client.chatStream(
+                model,
+                [{ role: 'user', content: message }],
+                {
+                    temperature: parseFloat(opts.temperature),
+                    max_tokens: parseInt(opts.maxTokens),
+                    system_prompt: opts.systemPrompt,
+                }
+            )) {
+                const delta = chunk.choices?.[0]?.delta?.content;
+                if (delta) fullContent += delta;
             }
 
-            if (opts.systemPrompt) {
-                body.system_prompt = opts.systemPrompt;
-            }
-
-            const data = await client.post<ChatResponse>('/api/ai/chat', body);
-
-            spinner.succeed('AI response received!');
+            spinner.succeed('Response received!');
 
             console.log(chalk.bold.cyan('\n💬 AI Response:'));
             console.log(chalk.dim('─'.repeat(80)));
-            console.log(data.content);
-            console.log('');
-
-            console.log(formatUsage(data.usage, data.credit_balance));
+            console.log(fullContent);
             console.log('');
         } catch (error) {
-            spinner.fail('Failed to get AI response');
+            spinner.fail('Failed to get response');
             handleApiError(error);
         }
     });
@@ -66,9 +57,8 @@ export const chatCommand = new Command('chat')
 export const chatInteractiveCommand = new Command('chat:interactive')
     .description('Interactive chat mode with AI')
     .option('-p, --provider <provider>', 'AI provider (DeepSeek, OpenRouter, DeepInfra)', 'DeepSeek')
-    .option('-m, --model <model>', 'Model ID', 'deepseek-chat')
+    .option('-m, --model <model>', 'Model ID')
     .option('-t, --temperature <temperature>', 'Temperature (0.0-2.0)', '0.7')
-    .option('--project-id <projectId>', 'Project ID for rules')
     .option('--system-prompt <systemPrompt>', 'System prompt')
     .action(async (opts) => {
         console.log(chalk.bold.cyan('\n🤖 KOB AI Interactive Chat'));
@@ -82,7 +72,8 @@ export const chatInteractiveCommand = new Command('chat:interactive')
             const config = getConfig();
             const client = new KobApiClient(config);
 
-            const messages: ChatMessage[] = [];
+            const model = formatV2Model(opts.provider, opts.model || config.modelId);
+            const messages: { role: string; content: string }[] = [];
             let totalTokens = 0;
             let totalCredits = 0;
 
@@ -92,85 +83,53 @@ export const chatInteractiveCommand = new Command('chat:interactive')
                 output: process.stdout,
             });
 
+            rl.on('SIGINT', () => {
+                console.log(chalk.yellow('\nGoodbye!'));
+                rl.close();
+                process.exit(0);
+            });
+
             const askQuestion = () => {
                 rl.question(chalk.green('\nYou: '), async (userInput: string) => {
                     const input = userInput.trim();
 
-                    if (!input) {
-                        askQuestion();
-                        return;
-                    }
+                    if (!input) { askQuestion(); return; }
 
-                    // Handle commands
                     if (input === '/exit' || input === '/quit') {
-                        console.log(chalk.yellow('\nGoodbye!'));
-                        rl.close();
-                        process.exit(0);
+                        console.log(chalk.yellow('\nGoodbye!')); rl.close(); process.exit(0);
                     }
-
                     if (input === '/help') {
-                        console.log(chalk.cyan('\n📖 Commands:'));
-                        console.log('  /clear - Clear conversation history');
-                        console.log('  /stats - Show conversation statistics');
-                        console.log('  /exit - Exit chat mode');
-                        console.log('');
-                        askQuestion();
-                        return;
+                        console.log(chalk.cyan('\n📖 Commands:\n  /clear - Clear history\n  /stats - Show statistics\n  /exit - Exit\n'));
+                        askQuestion(); return;
                     }
-
                     if (input === '/clear') {
-                        messages.length = 0;
-                        totalTokens = 0;
-                        totalCredits = 0;
+                        messages.length = 0; totalTokens = 0; totalCredits = 0;
                         console.log(chalk.green('\n✓ Conversation cleared'));
-                        askQuestion();
-                        return;
+                        askQuestion(); return;
                     }
-
                     if (input === '/stats') {
-                        console.log(chalk.cyan('\n📊 Conversation Statistics:'));
-                        console.log(`  Messages: ${messages.length}`);
-                        console.log(`  Total Tokens: ${totalTokens}`);
-                        console.log(`  Total Credits Used: ${totalCredits}`);
-                        console.log('');
-                        askQuestion();
-                        return;
+                        console.log(chalk.cyan(`\n📊 Stats: ${messages.length} msgs, ${totalTokens} tokens, ${totalCredits} credits\n`));
+                        askQuestion(); return;
                     }
 
-                    // Add user message
                     messages.push({ role: 'user', content: input });
-
-                    const spinner = ora('AI is thinking...').start();
+                    const spinner = ora('Thinking...').start();
 
                     try {
-                        const body: any = {
-                            provider: opts.provider,
-                            model: opts.model,
-                            messages,
+                        let fullContent = '';
+                        for await (const chunk of client.chatStream(model, messages, {
                             temperature: parseFloat(opts.temperature),
-                        };
-
-                        if (opts.projectId) {
-                            body.project_id = opts.projectId;
+                            system_prompt: opts.systemPrompt,
+                        })) {
+                            const delta = chunk.choices?.[0]?.delta?.content;
+                            if (delta) fullContent += delta;
                         }
-
-                        if (opts.systemPrompt) {
-                            body.system_prompt = opts.systemPrompt;
-                        }
-
-                        const data = await client.post<ChatResponse>('/api/ai/chat', body);
 
                         spinner.stop();
-
-                        // Add assistant message
-                        messages.push({ role: 'assistant', content: data.content });
-                        totalTokens += data.usage.total_tokens;
-                        totalCredits += data.usage.credits_used;
-
+                        messages.push({ role: 'assistant', content: fullContent });
                         console.log(chalk.bold.cyan('\nAI:'));
-                        console.log(data.content);
-                        console.log(chalk.dim(`\n[Used ${data.usage.credits_used} credits, ${data.credit_balance} remaining]`));
-
+                        console.log(fullContent);
+                        console.log('');
                         askQuestion();
                     } catch (error) {
                         spinner.fail('Failed to get response');

@@ -1,6 +1,6 @@
 # 📘 KOB CLI User Manual
 
-คู่มือการใช้งาน KOB AI CLI - เครื่องมือจัดการ AI ผ่าน Command Line
+คู่มือการใช้งาน KOB AI CLI — พัฒนาโดย Kob AI (www.kob-ai.dev) Developer in Thailand 🇹🇭
 
 ---
 
@@ -52,16 +52,15 @@ bun install
 
 สร้างไฟล์ `.env` ในโฟลเดอร์ `kob-cli`:
 ```env
-KOB_API_BASE_URL=https://kob-ai.com
+KOB_API_BASE_URL=https://www.kob-ai.dev
 KOB_API_KEY=kob_XXXXXXXXXXXXXXXXXXXX
-KOB_API_TOKEN=XXXXXXXXXXXXXXXXXXXXXXXX
 ```
 
-**วิธีรับ API Key & Token:**
-1. เข้า https://kob-ai.com
+**วิธีรับ API Key:**
+1. เข้า https://www.kob-ai.dev
 2. ไปที่เมนู "Token Keys"
 3. สร้าง Key ใหม่
-4. คัดลอก `api_key` และ `api_token` มาใส่ใน `.env`
+4. คัดลอก `api_key` มาใส่ใน `.env`
 
 ### 3. ทดสอบการเชื่อมต่อ
 ```bash
@@ -414,24 +413,23 @@ kob models --format json
 
 ## แก้ปัญหา
 
-### ❌ Error: KOB_API_KEY and KOB_API_TOKEN environment variables are required
+### ❌ Error: KOB_API_KEY environment variable is required
 
 **สาเหตุ:** ยังไม่ได้ตั้งค่า credentials
 
 **วิธีแก้:**
 1. สร้างไฟล์ `.env` ในโฟลเดอร์ `kob-cli`
-2. ใส่ API Key และ Token
+2. ใส่ API Key
 3. ลองใหม่อีกครั้ง
 
 ### ❌ Authentication failed
 
-**สาเหตุ:** API Key หรือ Token ผิด
+**สาเหตุ:** API Key ผิด
 
 **วิธีแก้:**
 1. ตรวจสอบว่าคัดลอกมาถูกต้อง
-2. เข้า https://kob-ai.com/token-keys
-3. ตรวจสอบว่า Token ยัง active อยู่
-4. ถ้าไม่แน่ใจ ให้ลบแล้วสร้างใหม่
+2. เข้า https://www.kob-ai.dev
+3. ถ้าไม่แน่ใจ ให้สร้าง Key ใหม่
 
 ### ❌ Insufficient credits
 
@@ -439,7 +437,7 @@ kob models --format json
 
 **วิธีแก้:**
 1. เช็คยอดคงเหลือ: `kob balance`
-2. เติมเครดิตที่ https://kob-ai.com
+2. เติมเครดิตที่ https://www.kob-ai.dev
 3. รอ 1-2 นาที แล้วลองใหม่
 
 ### ❌ Resource not found
@@ -498,8 +496,8 @@ kob models --format json
 - **เอกสารครบถ้วน:** อ่าน [README.md](README.md)
 - **ข้อมูลเทคนิค:** อ่าน [SPECTS.md](SPECTS.md)
 - **เริ่มต้นเร็ว:** อ่าน [QUICKSTART.md](QUICKSTART.md)
-- **เติมเครดิต:** https://kob-ai.com
-- **ดู API Keys:** https://kob-ai.com/token-keys
+- **เติมเครดิต:** https://www.kob-ai.dev
+- **ดู API Keys:** https://www.kob-ai.dev
 
 ---
 

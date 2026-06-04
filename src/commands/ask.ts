@@ -1,5 +1,6 @@
 import { Command } from 'commander';
 import chalk from 'chalk';
+import ora from 'ora';
 import { KobApiClient } from '../utils/api.js';
 import { getConfig } from '../utils/config.js';
 import { handleApiError, validateRequired } from '../utils/errors.js';
@@ -9,16 +10,16 @@ function formatV2Model(provider: string, model?: string): string {
     return m.includes('/') ? m : `${provider.toLowerCase()}/${m}`;
 }
 
-export const streamCommand = new Command('stream')
-    .description('Stream AI response in real-time')
-    .argument('<message>', 'Message to send to AI')
-    .option('-p, --provider <provider>', 'AI provider', 'DeepSeek')
+export const askCommand = new Command('ask')
+    .description('Ask a question to AI')
+    .argument('<question>', 'Your question')
+    .option('-p, --provider <provider>', 'AI provider (DeepSeek, OpenRouter, DeepInfra)', 'DeepSeek')
     .option('-m, --model <model>', 'Model ID')
     .option('-t, --temperature <temperature>', 'Temperature (0.0-2.0)', '0.7')
+    .option('--max-tokens <maxTokens>', 'Maximum tokens', '4096')
     .option('--system-prompt <systemPrompt>', 'System prompt')
-    .action(async (message, opts) => {
-        console.log(chalk.bold.cyan('\n🌊 Streaming AI Response...'));
-        console.log(chalk.dim('─'.repeat(80)));
+    .action(async (question, opts) => {
+        const spinner = ora('Thinking...').start();
 
         try {
             const config = getConfig();
@@ -30,24 +31,25 @@ export const streamCommand = new Command('stream')
             let fullContent = '';
             for await (const chunk of client.chatStream(
                 model,
-                [{ role: 'user', content: message }],
+                [{ role: 'user', content: question }],
                 {
                     temperature: parseFloat(opts.temperature),
+                    max_tokens: parseInt(opts.maxTokens),
                     system_prompt: opts.systemPrompt,
                 }
             )) {
                 const delta = chunk.choices?.[0]?.delta?.content;
-                if (delta) {
-                    process.stdout.write(delta);
-                    fullContent += delta;
-                }
+                if (delta) fullContent += delta;
             }
 
-            console.log('');
+            spinner.succeed('Answer received!');
+
+            console.log(chalk.bold.cyan('\n💡 Answer:'));
             console.log(chalk.dim('─'.repeat(80)));
-            console.log(chalk.bold.green('\n✓ Stream complete!'));
+            console.log(fullContent);
             console.log('');
         } catch (error) {
+            spinner.fail('Failed to get answer');
             handleApiError(error);
         }
     });

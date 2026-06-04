@@ -2,6 +2,8 @@
 
 Command-line interface for interacting with KOB AI API. Built with Bun and TypeScript.
 
+Developed by **Kob AI** — [www.kob-ai.dev](https://www.kob-ai.dev) | Developer in Thailand 🇹🇭
+
 ## ✨ Features
 
 - 🔐 **Authentication** - Verify credentials and check balance
@@ -18,7 +20,7 @@ Command-line interface for interacting with KOB AI API. Built with Bun and TypeS
 ### Prerequisites
 
 - **Bun** runtime installed ([Install Bun](https://bun.sh/docs/installation))
-- KOB AI API credentials (API Key and API Token)
+- KOB AI API credentials (API Key)
 
 ### Installation
 
@@ -38,15 +40,13 @@ bun install
 cp .env.example .env
 
 # Edit .env and add your credentials
-# KOB_API_BASE_URL=https://kob-ai.com
+# KOB_API_BASE_URL=https://www.kob-ai.dev
 # KOB_API_KEY=kob_your_api_key
-# KOB_API_TOKEN=your_api_token
 ```
 
 Or export them directly:
 ```bash
 export KOB_API_KEY=kob_your_api_key
-export KOB_API_TOKEN=your_api_token
 ```
 
 ### Usage
@@ -307,17 +307,17 @@ This creates a compiled binary `kob-cli.exe`.
 
 ## ❓ Troubleshooting
 
-**Error: KOB_API_KEY and KOB_API_TOKEN environment variables are required**
+**Error: KOB_API_KEY environment variable is required**
 - Make sure you've set your environment variables
 - Check that they're exported correctly or in .env file
 
 **Authentication failed**
-- Verify your API key and token are correct
-- Check that your token is active on the KOB AI website
+- Verify your API key is correct
+- Check that your key is active on the Kob AI dashboard
 
 **Insufficient credits**
 - Check your balance with `bun dev balance`
-- Top up your account on the KOB AI website
+- Top up your account at https://www.kob-ai.dev
 
 **Model not available**
 - List available models with `bun dev models`
@@ -336,8 +336,18 @@ For detailed API documentation, see the official KOB AI API docs in the parent d
 
 ## 📄 License
 
-Private - KOB AI Project
+KOB AI CLI - Non-Commercial Open Source License
+
+Copyright (c) 2025 KOB AI Project Owner
+
+This software is open source and free to use, modify, and distribute for **non-commercial purposes only**.
+
+**Commercial use is strictly prohibited without prior written permission from the owner.**
+
+For commercial licensing inquiries, please contact the project owner.
+
+See the [LICENSE](LICENSE) file for full terms.
 
 ## 🤝 Support
 
-For issues or questions, please contact the KOB AI development team.
+For issues or questions, please visit https://www.kob-ai.dev or contact the Kob AI development team.

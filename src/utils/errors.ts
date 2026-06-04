@@ -17,7 +17,7 @@ export function handleApiError(error: unknown): never {
 
         if (error.statusCode === 401) {
             console.error(chalk.yellow('\nAuthentication failed. Please check your API credentials.'));
-            console.error(chalk.yellow('Make sure KOB_API_KEY and KOB_API_TOKEN are correct.'));
+            console.error(chalk.yellow('Make sure KOB_API_KEY is correct (format: kob_xxx:your_token).'));
         } else if (error.statusCode === 402) {
             console.error(chalk.yellow('\nInsufficient credits. Please top up your account.'));
         } else if (error.statusCode === 404) {

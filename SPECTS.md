@@ -5,7 +5,7 @@
 ### Base Configuration
 
 ```
-Base URL: https://kob-ai.com
+Base URL: https://www.kob-ai.dev
 Authentication: API Key + API Token in request body
 Content-Type: application/json
 ```
@@ -14,23 +14,20 @@ Content-Type: application/json
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `KOB_API_BASE_URL` | No | `https://kob-ai.com` | API base URL |
+| `KOB_API_BASE_URL` | No | `https://www.kob-ai.dev` | API base URL |
 | `KOB_API_KEY` | Yes | - | API key (starts with `kob_`) |
-| `KOB_API_TOKEN` | Yes | - | API token |
 
 ## API Endpoints
 
 ### 1. Token Verification
 
-**Endpoint:** `POST /api/tokens/verify`
+**Endpoint:** `POST /tokens/verify`
 
 **Request Body:**
 ```json
 {
-  "api_key": "kob_xxx",
-  "api_token": "xxx"
+  "api_key": "kob_xxx"
 }
-```
 
 **Response (200):**
 ```json
@@ -58,13 +55,12 @@ Content-Type: application/json
 
 ### 2. AI Chat
 
-**Endpoint:** `POST /api/ai/chat`
+**Endpoint:** `POST /ai/chat`
 
 **Request Body:**
 ```json
 {
   "api_key": "kob_xxx",
-  "api_token": "xxx",
   "provider": "DeepSeek",
   "model": "deepseek-chat",
   "messages": [
@@ -110,9 +106,9 @@ Content-Type: application/json
 
 ### 3. AI Stream
 
-**Endpoint:** `POST /api/ai/stream`
+**Endpoint:** `POST /ai/stream`
 
-**Request Body:** Same as `/api/ai/chat`
+**Request Body:** Same as `/ai/chat`
 
 **Response:** Server-Sent Events (SSE)
 
@@ -151,13 +147,12 @@ Content-Type: application/json
 
 ### 4. Models
 
-**Endpoint:** `POST /api/models`
+**Endpoint:** `POST /models`
 
 **Request Body:**
 ```json
 {
-  "api_key": "kob_xxx",
-  "api_token": "xxx"
+  "api_key": "kob_xxx"
 }
 ```
 
@@ -190,7 +185,7 @@ Content-Type: application/json
 
 #### 5.1 List Projects
 
-**Endpoint:** `GET /api/projects?api_key=xxx&api_token=xxx`
+**Endpoint:** `GET /projects?api_key=xxx`
 
 **Response (200):**
 ```json
@@ -211,13 +206,12 @@ Content-Type: application/json
 
 #### 5.2 Create Project
 
-**Endpoint:** `POST /api/projects`
+**Endpoint:** `POST /projects`
 
 **Request Body:**
 ```json
 {
   "api_key": "kob_xxx",
-  "api_token": "xxx",
   "project_name": "My Project",
   "description": "Optional description"
 }
@@ -240,13 +234,12 @@ Content-Type: application/json
 
 #### 5.3 Update Project
 
-**Endpoint:** `PATCH /api/projects`
+**Endpoint:** `PATCH /projects`
 
 **Request Body:**
 ```json
 {
   "api_key": "kob_xxx",
-  "api_token": "xxx",
   "project_id": "uuid",
   "project_name": "New Name",
   "description": "New description"
@@ -255,13 +248,12 @@ Content-Type: application/json
 
 #### 5.4 Delete Project
 
-**Endpoint:** `DELETE /api/projects`
+**Endpoint:** `DELETE /projects`
 
 **Request Body:**
 ```json
 {
   "api_key": "kob_xxx",
-  "api_token": "xxx",
   "project_id": "uuid"
 }
 ```
@@ -272,7 +264,7 @@ Content-Type: application/json
 
 #### 6.1 List Rules
 
-**Endpoint:** `GET /api/projects/rules?api_key=xxx&api_token=xxx&project_id=xxx`
+**Endpoint:** `GET /projects/rules?api_key=xxx&project_id=xxx`
 
 **Response (200):**
 ```json
@@ -295,13 +287,12 @@ Content-Type: application/json
 
 #### 6.2 Create Rule
 
-**Endpoint:** `POST /api/projects/rules`
+**Endpoint:** `POST /projects/rules`
 
 **Request Body:**
 ```json
 {
   "api_key": "kob_xxx",
-  "api_token": "xxx",
   "project_id": "uuid",
   "rule_text": "Rule text",
   "rule_type": "required"
@@ -315,13 +306,12 @@ Content-Type: application/json
 
 #### 6.3 Update Rule
 
-**Endpoint:** `PATCH /api/projects/rules`
+**Endpoint:** `PATCH /projects/rules`
 
 **Request Body:**
 ```json
 {
   "api_key": "kob_xxx",
-  "api_token": "xxx",
   "project_id": "uuid",
   "rule_id": "uuid",
   "rule_text": "New text",
@@ -332,13 +322,12 @@ Content-Type: application/json
 
 #### 6.4 Delete Rule
 
-**Endpoint:** `DELETE /api/projects/rules`
+**Endpoint:** `DELETE /projects/rules`
 
 **Request Body:**
 ```json
 {
   "api_key": "kob_xxx",
-  "api_token": "xxx",
   "project_id": "uuid",
   "rule_id": "uuid"
 }
@@ -348,13 +337,12 @@ Content-Type: application/json
 
 ### 7. Credit History
 
-**Endpoint:** `POST /api/credits/history`
+**Endpoint:** `POST /credits/history`
 
 **Request Body:**
 ```json
 {
   "api_key": "kob_xxx",
-  "api_token": "xxx",
   "limit": 20,
   "offset": 0
 }
@@ -418,10 +406,10 @@ Content-Type: application/json
 
 **Authentication Error:**
 ```
-❌ API Error: Invalid API key or token
+❌ API Error: Invalid API key
 
 Authentication failed. Please check your API credentials.
-Make sure KOB_API_KEY and KOB_API_TOKEN are correct.
+Make sure KOB_API_KEY is correct.
 ```
 
 **Insufficient Credits:**
@@ -491,7 +479,7 @@ Common model IDs:
 
 ### Credential Management
 
-1. **Storage:** Environment variables only
+1. **Storage:** Environment variables only (KOB_API_KEY, supports combined format `api_key:api_token`)
 2. **Transmission:** In request body (not URL)
 3. **Logging:** Never log credentials
 4. **Validation:** Check presence before API calls

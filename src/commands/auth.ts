@@ -6,14 +6,19 @@ import { getConfig } from '../utils/config.js';
 import { handleApiError } from '../utils/errors.js';
 import type { UserToken } from '../types/index.js';
 
-export const authCommand = new Command('auth')
-    .description('Authentication commands');
+const brand = chalk.hex('#38bdf8');
+const green = chalk.hex('#34d399');
+const dim = chalk.dim;
+const accent = chalk.hex('#a78bfa');
 
-authCommand
-    .command('verify')
-    .description('Verify API credentials and show user info')
+export const authVerifyCommand = new Command('auth:verify')
+    .description('Verify API connection')
     .action(async () => {
-        const spinner = ora('Verifying credentials...').start();
+        const spinner = ora({
+            text: `${accent('Authenticating')}  ${dim('·')}  ${dim('connecting to API')}`,
+            color: 'cyan',
+            spinner: 'dots12',
+        }).start();
 
         try {
             const config = getConfig();
@@ -21,32 +26,18 @@ authCommand
 
             const data = await client.post<UserToken>('/api/tokens/verify');
 
-            spinner.succeed('Authentication successful!');
+            spinner.stop();
+            process.stdout.write('\x1B[?25l');
 
-            console.log(chalk.bold.cyan('\n👤 User Information:'));
-            console.log(chalk.dim('─'.repeat(60)));
-            console.log(`Name: ${chalk.bold(data.user_name)}`);
-            console.log(`Email: ${chalk.bold(data.user_email)}`);
-            console.log(`Key Name: ${chalk.bold(data.key_name)}`);
-
-            console.log(chalk.bold.cyan('\n💳 Package Information:'));
-            console.log(chalk.dim('─'.repeat(60)));
-            console.log(`Package: ${chalk.bold(data.package_name)}`);
-            console.log(`Started: ${chalk.bold(new Date(data.package_started_at).toLocaleDateString())}`);
-            console.log(`Expires: ${chalk.bold(new Date(data.package_expires_at).toLocaleDateString())}`);
-
-            console.log(chalk.bold.cyan('\n💰 Credit Balance:'));
-            console.log(chalk.dim('─'.repeat(60)));
-            console.log(`Balance: ${chalk.green.bold(data.credit_balance.toString())} credits`);
-
-            console.log(chalk.bold.cyan('\n🔗 Connection Info:'));
-            console.log(chalk.dim('─'.repeat(60)));
-            console.log(`IP: ${chalk.bold(data.ip)}`);
-            console.log(`Connected: ${chalk.bold(new Date(data.timestamp).toLocaleString())}`);
-
-            console.log(chalk.green('\n✅ Status: Connected and ready to use!\n'));
+            console.log(`  ${green('✔')}  ${green.bold('Connected')}  ${dim('·')}  ${brand(config.baseUrl)}${' '.repeat(20)}\n`);
+            console.log(`  ${dim('┌─ Connection ' + '─'.repeat(38) + '┐')}`);
+            console.log(`  ${dim('│')}  ${dim('User')}  ${chalk.bold(data.user_name)}  ${dim('·')}  ${dim(data.key_name)}`);
+            console.log(`  ${dim('│')}  ${dim('API')}   ${brand(config.baseUrl)}`);
+            console.log(`  ${dim('└' + '─'.repeat(48) + '┘')}\n`);
+            process.stdout.write('\x1B[?25h');
         } catch (error) {
-            spinner.fail('Authentication failed');
+            process.stdout.write('\x1B[?25h');
+            spinner.fail('Connection failed');
             handleApiError(error);
         }
     });
@@ -54,7 +45,11 @@ authCommand
 export const balanceCommand = new Command('balance')
     .description('Check your credit balance')
     .action(async () => {
-        const spinner = ora('Fetching balance...').start();
+        const spinner = ora({
+            text: `${accent('Fetching balance')}  ${dim('·')}  ${dim('checking credits')}`,
+            color: 'cyan',
+            spinner: 'dots12',
+        }).start();
 
         try {
             const config = getConfig();
@@ -62,15 +57,15 @@ export const balanceCommand = new Command('balance')
 
             const data = await client.post<UserToken>('/api/tokens/verify');
 
-            spinner.succeed('Balance retrieved!');
+            spinner.stop();
+            process.stdout.write('\x1B[?25l');
 
-            console.log(chalk.bold.cyan('\n💰 Your Credit Balance:'));
-            console.log(chalk.dim('─'.repeat(60)));
-            console.log(`Balance: ${chalk.green.bold(data.credit_balance.toString())} credits`);
-            console.log(`1 credit = $0.01 USD`);
-            console.log(`Approximate USD value: ${chalk.bold('$' + (data.credit_balance * 0.01).toFixed(2))}`);
-            console.log('');
+            console.log(`  ${green('✔')}  ${green.bold('Balance')}  ${dim('·')}  ${brand('credits available')}${' '.repeat(20)}\n`);
+            console.log(`  ${green.bold(data.credit_balance.toFixed(1))}  ${dim('credits')}`);
+            console.log(`  ${dim('≈ $' + (data.credit_balance * 0.01).toFixed(2) + ' USD')}\n`);
+            process.stdout.write('\x1B[?25h');
         } catch (error) {
+            process.stdout.write('\x1B[?25h');
             spinner.fail('Failed to fetch balance');
             handleApiError(error);
         }

@@ -34,44 +34,6 @@ export interface ModelsResponse {
     providers: ProviderModels[];
 }
 
-// Project Types
-export interface Project {
-    id: string;
-    user_email: string;
-    project_name: string;
-    description: string;
-    created_at: string;
-    updated_at: string;
-}
-
-export interface ProjectsResponse {
-    success: boolean;
-    message?: string;
-    projects?: Project[];
-    project?: Project;
-}
-
-// Project Rule Types
-export type RuleType = 'forbidden' | 'required' | 'custom';
-
-export interface ProjectRule {
-    id: string;
-    project_id: string;
-    user_email: string;
-    rule_text: string;
-    rule_type: RuleType;
-    is_active: boolean;
-    created_at: string;
-    updated_at: string;
-}
-
-export interface RulesResponse {
-    success: boolean;
-    message?: string;
-    rules?: ProjectRule[];
-    rule?: ProjectRule;
-}
-
 // Chat Types
 export type MessageRole = 'user' | 'assistant' | 'system';
 
@@ -123,45 +85,11 @@ export interface StreamEvent {
     };
 }
 
-// Credit History Types
-export type CreditStatus = 'completed' | 'pending' | 'failed' | 'refunded';
-
-export interface CreditHistoryItem {
-    id: number;
-    amount: number;
-    payment_method: string;
-    payment_channel: string;
-    status: CreditStatus;
-    note?: string;
-    created_at: string;
-}
-
-export interface CreditHistoryData {
-    total_items: number;
-    total_credits_added: number;
-    limit: number;
-    offset: number;
-    items: CreditHistoryItem[];
-}
-
-export interface CreditHistoryResponse {
-    success: boolean;
-    message: string;
-    data: CreditHistoryData;
-}
-
-// API Response Types
-export interface ApiError {
-    success: false;
-    message: string;
-    credit_balance?: number;
-}
-
-export type HttpMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE';
-
 // CLI Configuration Types
 export interface CliConfig {
     baseUrl: string;
     apiKey: string;
-    apiToken: string;
+    apiToken?: string;
+    bearerToken?: string;
+    modelId?: string;
 }

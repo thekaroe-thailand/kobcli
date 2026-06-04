@@ -39,7 +39,7 @@ This document provides comprehensive specifications for AI agents working on the
                ▼
 ┌─────────────────────────────────────────────┐
 │          KOB AI API Server                   │
-│  https://kob-ai.com/api/*                    │
+│  https://www.kob-ai.dev/api/*                 │
 └─────────────────────────────────────────────┘
 ```
 
@@ -281,7 +281,7 @@ if (event.content) {
 **Solution:** Check .env file or export variables
 ```bash
 export KOB_API_KEY=xxx
-export KOB_API_TOKEN=xxx
+export KOB_API_KEY=xxx
 ```
 
 ## Future Enhancements

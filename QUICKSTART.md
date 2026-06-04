@@ -11,12 +11,11 @@ bun install
 ### Configure Credentials
 Create a `.env` file:
 ```bash
-KOB_API_BASE_URL=https://kob-ai.com
+KOB_API_BASE_URL=https://www.kob-ai.dev
 KOB_API_KEY=kob_your_api_key_here
-KOB_API_TOKEN=your_api_token_here
 ```
 
-**Get your credentials from:** https://kob-ai.com/token-keys
+**Get your credentials from:** https://www.kob-ai.dev
 
 ---
 
@@ -124,14 +123,14 @@ See [README.md](README.md) for complete documentation.
 
 ## Troubleshooting
 
-**Problem:** "KOB_API_KEY and KOB_API_TOKEN environment variables are required"
+**Problem:** "KOB_API_KEY environment variable is required"
 - **Solution:** Make sure your `.env` file exists with correct credentials
 
 **Problem:** "Authentication failed"
-- **Solution:** Check that your API key and token are correct and active
+- **Solution:** Check that your API key is correct and active
 
 **Problem:** "Insufficient credits"
-- **Solution:** Top up your account at https://kob-ai.com
+- **Solution:** Top up your account at https://www.kob-ai.dev
 
 ---
 

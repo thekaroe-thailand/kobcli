@@ -22,16 +22,15 @@ bun link
 สร้างไฟล์ `.env` ในโฟลเดอร์ `kob-cli`:
 
 ```env
-KOB_API_BASE_URL=https://kob-ai.com
+KOB_API_BASE_URL=https://www.kob-ai.dev
 KOB_API_KEY=kob_YOUR_API_KEY
-KOB_API_TOKEN=YOUR_API_TOKEN
 ```
 
-**วิธีรับ API Key & Token:**
-1. เข้า https://kob-ai.com
+**วิธีรับ API Key:**
+1. เข้า https://www.kob-ai.dev
 2. ไปที่ "Token Keys"
 3. สร้าง Key ใหม่
-4. คัดลอกมาใส่ใน `.env`
+4. คัดลอก `api_key` มาใส่ใน `.env`
 
 ### ขั้นตอนที่ 4: ทดสอบ
 
