@@ -1,6 +1,6 @@
 {
   "name": "kob-cli",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "KOB CLI — AI-powered code generation tool. Built by Kob AI, made in Thailand.",
   "type": "module",
   "bin": {
@@ -23,6 +23,7 @@
     "start": "bun run src/index.ts",
     "build": "bun build src/index.ts --compile --outfile kob-cli",
     "prepublishOnly": "bun run build",
+    "publish": "bun run src/scripts/release.ts",
     "release:patch": "npm version patch --no-git-tag-version && npm publish",
     "release:minor": "npm version minor --no-git-tag-version && npm publish",
     "release:major": "npm version major --no-git-tag-version && npm publish"
