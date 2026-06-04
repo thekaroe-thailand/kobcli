@@ -1,0 +1,32 @@
+# Dependencies
+node_modules/
+
+# Build output
+*.exe
+kob-cli.exe
+dist/
+build/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Bun
+bun.lockb
