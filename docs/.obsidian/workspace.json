@@ -4,17 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "6de31c2d0a6953fb",
+        "id": "0f006549bb43654d",
         "type": "tabs",
         "children": [
           {
-            "id": "433363221ede36b7",
+            "id": "90534b08f1ffbeff",
             "type": "leaf",
             "state": {
-              "type": "empty",
+              "type": "graph",
               "state": {},
-              "icon": "lucide-file",
-              "title": "New tab"
+              "icon": "lucide-git-fork",
+              "title": "Graph view"
             }
           }
         ]
@@ -176,6 +176,31 @@
       "bases:Create new base": false
     }
   },
-  "active": "433363221ede36b7",
-  "lastOpenFiles": []
+  "active": "90534b08f1ffbeff",
+  "lastOpenFiles": [
+    "colors.md",
+    "config-form.md",
+    "model-picker.md",
+    "types.md",
+    "errors.md",
+    "env-file.md",
+    "config.md",
+    "api.md",
+    "README.md",
+    "code-tui.md",
+    "Untitled.md",
+    "11-conventions.md",
+    "12-known-limitations.md",
+    "10-build-and-release.md",
+    "09-models-picker.md",
+    "08-config-and-env.md",
+    "07-slash-system.md",
+    "06-images-vision.md",
+    "05-conversation-scrolling.md",
+    "04-tui-layout.md",
+    "03-cli-commands.md",
+    "02-source-map.md",
+    "01-architecture.md",
+    "00-overview.md"
+  ]
 }

@@ -52,6 +52,16 @@ export function ConfigForm({ onDone }: Props) {
     }, [idx]);
 
     useInput((input, key) => {
+        // After saving we're just waiting for the user to acknowledge —
+        // any key (Enter / Esc / printable) closes the overlay so focus
+        // returns to the chat. Without this, the form would lock the
+        // keyboard: InputBox is also disabled while configOpen is true.
+        if (saved) {
+            if (input || key.return || key.escape || key.backspace || key.tab) {
+                onDone(true);
+            }
+            return;
+        }
         if (!editing) return;
         if (key.escape) {
             onDone(false);
