@@ -915,75 +915,6 @@ function ConversationPanel({
 }
 
 // ============================================================================
-// WELCOME FOOTER — Three modes + Tips, rendered at the bottom
-// (only when there are no exchanges yet). Compact, single row each.
-// ============================================================================
-function WelcomeFooter() {
-    const { frame } = useAnimation({ interval: 1000 });
-    const pulse = ['█', '▓', '▒', '░', '▒', '▓'];
-    const wave = pulse[frame % pulse.length]!;
-
-    return (
-        <Box
-            flexDirection="column"
-            marginTop={1}
-            borderStyle="round"
-            borderColor={c.borderDim}
-            paddingX={1}
-        >
-            {/* Row 1: greeting */}
-            <Box>
-                <Text color={c.brand} bold>{wave} </Text>
-                <Text color={c.text} bold>Welcome to KOB Code Engine</Text>
-                <Text color={c.textDim}>  ·  </Text>
-                <Text color={c.textMuted}>pick a mode and start chatting</Text>
-            </Box>
-
-            {/* Row 2: three modes in one row */}
-            <Box marginTop={1}>
-                <Text color={c.accent} bold>✦ modes </Text>
-                <Text color={c.borderDim}>  </Text>
-                {MODES.map((m, i) => (
-                    <Box key={m.key} marginRight={2}>
-                        <Text color={m.color} bold>{m.icon} {m.label}</Text>
-                        <Text color={c.textDim}> [</Text>
-                        <Text color={c.pink}>{m.shortcut}</Text>
-                        <Text color={c.textDim}>]</Text>
-                        <Text color={c.textMuted}>  {m.description}</Text>
-                    </Box>
-                ))}
-            </Box>
-
-            {/* Row 3: tips in a compact line */}
-            <Box marginTop={1}>
-                <Text color={c.yellow} bold>✦ tips   </Text>
-                <Text color={c.borderAccent}>• </Text>
-                <Text color={c.pink}>Tab</Text>
-                <Text color={c.textMuted}>/</Text>
-                <Text color={c.pink}>1</Text>
-                <Text color={c.textMuted}>/</Text>
-                <Text color={c.pink}>2</Text>
-                <Text color={c.textMuted}>/</Text>
-                <Text color={c.pink}>3</Text>
-                <Text color={c.textMuted}> switch mode  </Text>
-                <Text color={c.borderAccent}>• </Text>
-                <Text color={c.brand}>/models</Text>
-                <Text color={c.textMuted}> pick  </Text>
-                <Text color={c.borderAccent}>• </Text>
-                <Text color={c.brand}>/config</Text>
-                <Text color={c.textMuted}> edit  </Text>
-                <Text color={c.borderAccent}>• </Text>
-                <Text color={c.pink}>/exit</Text>
-                <Text color={c.textMuted}> quit  </Text>
-                <Text color={c.borderAccent}>• </Text>
-                <Text color={c.pink}>Esc</Text>
-                <Text color={c.textMuted}> clear input</Text>
-            </Box>
-        </Box>
-    );
-}
-
-// ============================================================================
 // GENERATING ANIMATION
 // ============================================================================
 const statusMessages = [
@@ -1658,10 +1589,6 @@ function CodeEngine() {
                     isActive={palette === null && !configOpen && phase === 'input'}
                 />
             )}
-
-            {/* Welcome footer — only when no rounds yet.
-                Modes + tips live here at the bottom so the top stays clean. */}
-            {exchanges.length === 0 && phase !== 'generating' && <WelcomeFooter />}
 
             <BottomBar phase={phase} mode={mode} />
         </Box>
