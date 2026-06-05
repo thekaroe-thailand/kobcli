@@ -13,6 +13,7 @@ export const c = {
     accent: '#a78bfa',    // purple
     green: '#34d399',
     yellow: '#fbbf24',
+    orange: '#fb923c',
     red: '#ef4444',
     pink: '#f472b6',
     blue: '#60a5fa',

@@ -62,6 +62,58 @@ export function kobImagesDir(): string {
     return dir;
 }
 
+export function kobHistoryDir(): string {
+    const dir = join(homedir(), '.kob-cli', 'history');
+    if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
+export function getHistoryFilePath(): string {
+    const cwd = process.cwd();
+    const slug = cwd.replace(/[\\/:\s]+/g, '_').slice(0, 120);
+    return join(kobHistoryDir(), `${slug}.json`);
+}
+
+export function loadChatHistory(): {
+    exchanges: Exchange[];
+    messages: { role: string; content: string }[];
+} {
+    const path = getHistoryFilePath();
+    if (!existsSync(path)) return { exchanges: [], messages: [] };
+    try {
+        const raw = readFileSync(path, 'utf-8');
+        const data = JSON.parse(raw);
+        if (data.exchanges && Array.isArray(data.exchanges)) {
+            return {
+                exchanges: data.exchanges,
+                messages: data.messages || [],
+            };
+        }
+    } catch { /* ignore corrupted history */ }
+    return { exchanges: [], messages: [] };
+}
+
+export function saveChatHistory(
+    exchanges: Exchange[],
+    messages: { role: string; content: string }[]
+): void {
+    const path = getHistoryFilePath();
+    try {
+        writeFileSync(
+            path,
+            JSON.stringify({ exchanges, messages, savedAt: Date.now() }, null, 2),
+            'utf-8'
+        );
+    } catch { /* ignore write errors */ }
+}
+
+export function clearChatHistory(): void {
+    const path = getHistoryFilePath();
+    try {
+        if (existsSync(path)) writeFileSync(path, '{}', 'utf-8');
+    } catch { /* ignore write errors */ }
+}
+
 // Save a local file path into our images dir and return the absolute path.
 export function attachImagePath(srcPath: string): string {
     const abs = resolve(srcPath);
@@ -455,92 +507,80 @@ function BrandHeader({
 }) {
     const { frame } = useAnimation({ interval: 600 });
     const isThinking = phase === 'generating';
-    const dotColor = isThinking ? c.yellow : c.green;
-    const statusText = isThinking ? 'thinking' : 'ready';
-    const statusIcon = isThinking ? '⟳' : '✓';
+    const dotColor = c.green;
+    const statusText = 'ready';
+    const statusIcon = '●';
 
     const K = c.brand;     // cyan for KOB
-    const C = c.pink;      // pink for CLI
+    const C = c.green;     // green for CLI
 
     return (
-        <Box flexDirection="column">
+        <Box flexDirection="column" marginTop={2}>
             {/* Big ASCII KOB CLI logo */}
             <Box flexDirection="column" alignItems="center">
                 <Box>
-                    <Text color={K}>██╗  ██╗ ██████╗ ██████╗    </Text>
+                    <Text color={c.blue}>██╗  ██╗ ██████╗ ██████╗    </Text>
                     <Text color={C}>██████╗██╗     ██╗</Text>
                 </Box>
                 <Box>
-                    <Text color={K}>██║ ██╔╝██╔═══██╗██╔══██╗  </Text>
+                    <Text color={c.blue}>██║ ██╔╝██╔═══██╗██╔══██╗  </Text>
                     <Text color={C}>██╔════╝██║     ██║</Text>
                 </Box>
                 <Box>
-                    <Text color={K}>█████╔╝ ██║   ██║██████╔╝  </Text>
+                    <Text color="white">█████╔╝ ██║   ██║██████╔╝  </Text>
                     <Text color={C}>██║     ██║     ██║</Text>
                 </Box>
                 <Box>
-                    <Text color={K}>██╔═██╗ ██║   ██║██╔══██╗  </Text>
+                    <Text color="white">██╔═██╗ ██║   ██║██╔══██╗  </Text>
                     <Text color={C}>██║     ██║     ██║</Text>
                 </Box>
                 <Box>
-                    <Text color={K}>██║  ██╗╚██████╔╝██████╔╝  </Text>
+                    <Text color={c.red}>██║  ██╗╚██████╔╝██████╔╝  </Text>
                     <Text color={C}>╚██████╗███████╗██║</Text>
                 </Box>
                 <Box>
-                    <Text color={K}>╚═╝  ╚═╝ ╚═════╝ ╚═════╝   </Text>
+                    <Text color={c.red}>╚═╝  ╚═╝ ╚═════╝ ╚═════╝   </Text>
                     <Text color={C}>╚═════╝╚══════╝╚═╝</Text>
                 </Box>
             </Box>
 
+            {/* Tagline */}
+            <Box justifyContent="center" marginTop={1}>
+                <Text color={c.textMuted} italic>Made in Thailand</Text>
+            </Box>
+
             {/* Info bar with brand identity + live status */}
             <Box
-                borderStyle="round"
+                borderStyle="single"
+                borderTop={false}
+                borderLeft={false}
+                borderRight={false}
                 borderColor={c.brand}
                 paddingX={1}
                 flexDirection="column"
                 marginTop={1}
             >
                 <Box>
-                    <Text color={c.text} bold>KOB CLI</Text>
-                    <Text color={c.textDim}>  </Text>
-                    <Text color={c.pink} italic>Thailand</Text>
-                    <Text>  </Text>
-                    <Text backgroundColor="red" color="red">▰▰</Text>
-                    <Text> </Text>
-                    <Text color="white" bold>▰</Text>
-                    <Text> </Text>
-                    <Text backgroundColor="blue" color="blue">▰▰</Text>
-                    <Text color={c.textDim}>  ·  </Text>
-                    <Text color={c.brand} bold>powered by</Text>
-                    <Text>  </Text>
-                    <Text color={c.green} bold>Tavon Seesenpila</Text>
-                    <Text color={c.textDim}>  </Text>
-                    <Text color={c.textMuted} italic>Founder of Kob AI</Text>
-                </Box>
-
-                {/* Row 2: version + model info */}
-                <Box>
                     <Box>
-                        <Text color={c.textDim}>v{version}  ·  AI Command-Line Interface</Text>
+                        <Text color={c.text} bold>KOB CLI</Text>
+                        <Text color={c.textDim}>  ·  </Text>
+                        <Text color={c.green} bold>Tavon Seesenpila</Text>
+                        <Text color={c.textDim}>  </Text>
+                        <Text color={c.textMuted} italic>Founder of Kob AI</Text>
                     </Box>
                     <Box flexGrow={1} />
+                    <Box>
+                        <Text color={c.textDim}>v{version}</Text>
+                    </Box>
+                </Box>
+
+                {/* Row 2: model info */}
+                <Box>
                     <Box>
                         <Text color={c.textDim}>model </Text>
                         <Text color={c.pink} bold>{modelName}</Text>
                         <Text color={c.textDim}>  ·  </Text>
                         <Text color={c.text}>{provider}</Text>
-                        <Text color={c.textDim}>  ·  </Text>
-                        <Text color={c.textMuted}>/v2/chat</Text>
-                        <Text color={c.textDim}>  ·  </Text>
-                        <Text color={c.green}>bearer</Text>
-                        <Text color={c.textDim}>  ·  </Text>
-                        {modelSupportsVision(modelName) ? (
-                            <Text color={c.accent} bold>👁 vision</Text>
-                        ) : (
-                            <Text color={c.borderDim}>◌ text-only</Text>
-                        )}
-                        <Text color={c.textDim}>  ·  </Text>
-                        <Text color={c.green}>stream ✓</Text>
                     </Box>
                 </Box>
 
@@ -566,7 +606,7 @@ function BrandHeader({
                         <Text color={c.textDim}>  </Text>
                         <Text color={c.pink}>↑ {formatNum(session.totalOut)}</Text>
                         <Text color={c.textDim}>  ·  </Text>
-                        <Text color={dotColor}>{statusIcon} {statusText}</Text>
+                        <Text color={dotColor}>{statusIcon}</Text>
                     </Box>
                 </Box>
             </Box>
@@ -608,6 +648,7 @@ type LineItem =
     | { kind: 'response-line'; text: string; modeColor: string; isFirst: boolean }
     | { kind: 'response-trunc'; totalChars: number; totalLines: number }
     | { kind: 'no-response' }
+    | { kind: 'code-block'; lang: string; lines: string[] }
     | { kind: 'file-line'; filename: string; add: number; del: number; created: boolean }
     | { kind: 'cmd-header'; cmd: string; ok: boolean; statusColor: string; exitCode: number; durationMs: number }
     | { kind: 'cmd-output'; text: string; statusColor: string }
@@ -641,14 +682,46 @@ function buildLineBuffer(exchanges: Exchange[]): LineItem[] {
             const total = respLines.length;
             const trunc = total > MAX_RESP_LINES;
             const shown = trunc ? respLines.slice(0, MAX_RESP_LINES) : respLines;
+
+            let inCode = false;
+            let codeBuf: string[] = [];
+            let codeLang = '';
+
+            const flushCode = () => {
+                if (codeBuf.length > 0) {
+                    buf.push({ kind: 'code-block', lang: codeLang, lines: codeBuf });
+                    codeBuf = [];
+                    codeLang = '';
+                }
+            };
+
             shown.forEach((line, j) => {
-                buf.push({
-                    kind: 'response-line',
-                    text: line,
-                    modeColor: m.color,
-                    isFirst: j === 0,
-                });
+                const trimmed = line.trim();
+                if (trimmed.startsWith('```')) {
+                    if (inCode) {
+                        flushCode();
+                        inCode = false;
+                    } else {
+                        flushCode(); // flush any prose before code block
+                        inCode = true;
+                        codeLang = trimmed.slice(3).trim();
+                    }
+                    return;
+                }
+                if (inCode) {
+                    codeBuf.push(line);
+                } else {
+                    buf.push({
+                        kind: 'response-line',
+                        text: line,
+                        modeColor: m.color,
+                        isFirst: j === 0,
+                    });
+                }
             });
+
+            if (inCode) flushCode(); // response ended inside code block
+
             if (trunc) {
                 buf.push({ kind: 'response-trunc', totalChars: exc.output.length, totalLines: total });
             }
@@ -745,6 +818,28 @@ function renderLine(item: LineItem, idx: number): React.ReactNode {
                     <Text color={c.red}>✗ (no response received)</Text>
                 </Box>
             );
+        case 'code-block':
+            return (
+                <Box key={key} marginLeft={2} marginTop={1} marginBottom={1}>
+                    <Box
+                        borderStyle="round"
+                        borderColor={c.borderDim}
+                        backgroundColor={c.panel}
+                        paddingX={1}
+                        paddingY={1}
+                        flexDirection="column"
+                    >
+                        <Box>
+                            <Text color={c.accent}>◆ {item.lang || 'code'}</Text>
+                        </Box>
+                        {item.lines.map((line, i) => (
+                            <Box key={i}>
+                                <Text color={c.green}>{line.length === 0 ? ' ' : line}</Text>
+                            </Box>
+                        ))}
+                    </Box>
+                </Box>
+            );
         case 'file-line':
             return (
                 <Box key={key} marginLeft={2}>
@@ -788,9 +883,13 @@ function renderLine(item: LineItem, idx: number): React.ReactNode {
             return (
                 <Box key={key} marginLeft={2} marginTop={1}>
                     <Text color={c.textDim}>↳ </Text>
-                    <Text color={c.textMuted}>{item.exc.output.length} chars</Text>
+                    <Text color={c.textMuted}>{item.exc.output.length} </Text>
+                    <Text color={c.yellow}>chars</Text>
                     <Text color={c.textDim}>  ·  </Text>
-                    <Text color={c.textMuted}>↓ {formatNum(item.exc.inTokens)} ↑ {formatNum(item.exc.outTokens)} tok</Text>
+                    <Text color={c.blue}>↓ {formatNum(item.exc.inTokens)}</Text>
+                    <Text color={c.textDim}>  </Text>
+                    <Text color={c.pink}>↑ {formatNum(item.exc.outTokens)} </Text>
+                    <Text color={c.yellow}>tok</Text>
                     <Text color={c.textDim}>  ·  </Text>
                     <Text color={c.brand}>{item.exc.model}</Text>
                 </Box>
@@ -1067,25 +1166,10 @@ function InputBox({ onSubmit, mode, onModeChange, visionSupported, placeholder, 
             setTimeout(() => setPasteHint(null), 2500);
             return;
         }
-        if (key.escape) {
-            // ESC clears the input AND any attachments
-            if (value.length > 0 || attachments.length > 0) {
-                setValue('');
-                setAttachments([]);
-                return;
-            }
-            return;
-        }
-        // Tab: cycle modes UNLESS the slash popup is open (then it fills the highlighted command)
-        if (key.tab) {
-            if (slashOpen) {
-                const cmd = slashMatches[slashIdx];
-                if (cmd) setValue('/' + cmd.name + ' ');
-                return;
-            }
-            const i = MODES.findIndex(m => m.key === mode);
-            const next = MODES[(i + 1) % MODES.length]!;
-            onModeChange(next.key);
+        // Tab: fill highlighted slash command if popup is open
+        if (key.tab && slashOpen) {
+            const cmd = slashMatches[slashIdx];
+            if (cmd) setValue('/' + cmd.name + ' ');
             return;
         }
         if (!key.shift && (char === '1' || char === '2' || char === '3') && value.length === 0) {
@@ -1158,25 +1242,9 @@ function InputBox({ onSubmit, mode, onModeChange, visionSupported, placeholder, 
 
     return (
         <Box flexDirection="column" borderStyle="round" borderColor={borderColor} marginTop={1}>
-            <Box paddingX={1} borderStyle="single" borderColor={c.borderDim} borderTop={false} borderLeft={false} borderRight={false} justifyContent="space-between">
-                <Box>
-                    <Text color={modeInfo.color} bold>▶ </Text>
-                    <Text color={c.text} bold>Input</Text>
-                    <Text color={c.textDim}>  ·  </Text>
-                    <ModeSelector mode={mode} />
-                </Box>
-                <Box>
-                    <Text color={c.textDim}>{visionSupported ? '⌘V ' : ''}</Text>
-                    <Text color={c.textMuted}>{visionSupported ? 'paste image' : 'text only'}</Text>
-                    <Text color={c.borderDim}>  ·  </Text>
-                    <Text color={c.textDim}>Tab </Text>
-                    <Text color={c.textMuted}>switch</Text>
-                </Box>
-            </Box>
-
             {/* Attachment chips */}
             {attachments.length > 0 && (
-                <Box paddingX={1} paddingTop={1} flexWrap="wrap">
+                <Box paddingX={1} flexWrap="wrap">
                     {attachments.map((a, i) => (
                         <Box key={i} marginRight={1}>
                             <Text color={c.accent}>📎 </Text>
@@ -1194,11 +1262,11 @@ function InputBox({ onSubmit, mode, onModeChange, visionSupported, placeholder, 
                 </Box>
             )}
 
-            <Box paddingX={1} paddingY={1}>
+            <Box paddingX={1}>
+                {visionSupported && <Text color={c.green}>🖼️  </Text>}
                 <Text color={modeInfo.color}>❯ </Text>
                 {isEmpty ? (
                     <>
-                        <Text color={c.borderDim}>{ph}</Text>
                         {showCursor && <Text color={modeInfo.color}>{'▌'}</Text>}
                     </>
                 ) : (
@@ -1393,7 +1461,6 @@ function BottomBar({ phase, mode, isFirstStart }: { phase: Phase; mode: Mode; is
     const modeInfo = getMode(mode);
     return (
         <Box
-            marginTop={1}
             borderStyle="round"
             borderColor={c.borderDim}
             paddingX={1}
@@ -1402,12 +1469,6 @@ function BottomBar({ phase, mode, isFirstStart }: { phase: Phase; mode: Mode; is
             <Box flexWrap="wrap">
                 <Text color={c.green}>⏎ </Text>
                 <Text color={c.textDim}>submit</Text>
-                <Text color={c.borderDim}>  ·  </Text>
-                <Text color={c.yellow}>Esc</Text>
-                <Text color={c.textDim}> clear</Text>
-                <Text color={c.borderDim}>  ·  </Text>
-                <Text color={c.pink}>Tab</Text>
-                <Text color={c.textDim}> mode</Text>
                 <Text color={c.borderDim}>  ·  </Text>
                 <Text color={c.brand}>/models</Text>
                 <Text color={c.textDim}> switch</Text>
@@ -1503,6 +1564,23 @@ function CodeEngine() {
         return () => clearInterval(t);
     }, []);
 
+    // Load chat history on mount
+    useEffect(() => {
+        const { exchanges: savedExchanges, messages: savedMessages } = loadChatHistory();
+        if (savedExchanges.length > 0) {
+            setExchanges(savedExchanges);
+            messagesRef.current = savedMessages;
+            exchangesLenRef.current = savedExchanges.length;
+        }
+    }, []);
+
+    // Save chat history whenever exchanges change
+    useEffect(() => {
+        if (exchanges.length > 0) {
+            saveChatHistory(exchanges, messagesRef.current);
+        }
+    }, [exchanges]);
+
     // Auto-scroll to bottom on each new round
     useEffect(() => {
         if (exchanges.length !== exchangesLenRef.current) {
@@ -1519,9 +1597,9 @@ function CodeEngine() {
         ? now - startMs
         : (exchanges.length > 0 ? exchanges.reduce((s, e) => s + e.durationMs, 0) : 0);
 
-    // Reserve rows for: brand header (~10), input area (~3), bottom bar (~1),
+    // Reserve rows for: brand header (~10), input area (~2), bottom bar (~1),
     // welcome footer when present (~5), and margins/padding (~3).
-    const RESERVED_ROWS = 22;
+    const RESERVED_ROWS = 21;
     const convMaxHeight = Math.max(8, viewportRows - RESERVED_ROWS);
 
     // Dispatch a /slash command. Returns true if the input was a slash command
@@ -1553,6 +1631,7 @@ function CodeEngine() {
                 messagesRef.current = [];
                 exchangesLenRef.current = 0;
                 setScrollOffset(0);
+                clearChatHistory();
                 showBanner('◆ session cleared');
                 return true;
             case 'reset': {
@@ -1567,6 +1646,7 @@ function CodeEngine() {
                 setExchanges([]);
                 messagesRef.current = [];
                 exchangesLenRef.current = 0;
+                clearChatHistory();
                 showBanner(`◆ reset → model ${newModel}`);
                 return true;
             }
@@ -1751,6 +1831,10 @@ function CodeEngine() {
             )}
 
             <BottomBar phase={phase} mode={mode} isFirstStart={isFirstStart} />
+
+            <Box justifyContent="center">
+                <Text color={c.textDim}>📁 {process.cwd()}</Text>
+            </Box>
         </Box>
     );
 }
