@@ -1249,9 +1249,147 @@ function InputBox({ onSubmit, mode, onModeChange, visionSupported, placeholder, 
 }
 
 // ============================================================================
+// HELP SCREEN — full-screen overlay shown by /help
+// A self-contained beginner's manual. Closes on Esc, Enter, or q.
+// ============================================================================
+function HelpScreen({ onClose }: { onClose: () => void }) {
+    useInput((input, key) => {
+        if (key.escape || key.return || input === 'q') {
+            onClose();
+        }
+    }, { isActive: true });
+
+    return (
+        <Box
+            flexDirection="column"
+            borderStyle="round"
+            borderColor={c.brand}
+            paddingX={2}
+            paddingY={1}
+            marginTop={1}
+        >
+            {/* Header */}
+            <Box>
+                <Text color={c.brand} bold>? /help</Text>
+                <Text color={c.textDim}>  </Text>
+                <Text color={c.text} bold>KOB CLI · beginner's guide</Text>
+                <Box flexGrow={1} />
+                <Text color={c.textDim}>Esc / Enter / q to close</Text>
+            </Box>
+
+            {/* Getting started */}
+            <Box marginTop={1} flexDirection="column">
+                <Text color={c.accent} bold>◆ Getting started</Text>
+                <Box marginLeft={2} flexDirection="column">
+                    <Box>
+                        <Text color={c.brand}>/config</Text>
+                        <Text color={c.textMuted}>   set API key, model, base URL → </Text>
+                        <Text color={c.text}>.env</Text>
+                    </Box>
+                    <Box>
+                        <Text color={c.brand}>/models</Text>
+                        <Text color={c.textMuted}>   pick a model from the catalog</Text>
+                    </Box>
+                    <Box>
+                        <Text color={c.brand}>/help</Text>
+                        <Text color={c.textMuted}>     show this guide</Text>
+                    </Box>
+                </Box>
+            </Box>
+
+            {/* Modes */}
+            <Box marginTop={1} flexDirection="column">
+                <Text color={c.accent} bold>◆ Modes (press </Text>
+                <Text color={c.pink}>Tab</Text>
+                <Text color={c.accent} bold> to cycle)</Text>
+                <Box marginLeft={2} flexDirection="column">
+                    {MODES.map((m) => (
+                        <Box key={m.key}>
+                            <Text color={m.color} bold>{m.icon} {m.label}</Text>
+                            <Text color={c.textDim}>  [{m.shortcut}]   </Text>
+                            <Text color={c.textMuted}>{m.description}</Text>
+                        </Box>
+                    ))}
+                </Box>
+            </Box>
+
+            {/* While typing */}
+            <Box marginTop={1} flexDirection="column">
+                <Text color={c.accent} bold>◆ While typing</Text>
+                <Box marginLeft={2} flexDirection="column">
+                    <Box>
+                        <Text color={c.yellow}>Esc</Text>
+                        <Text color={c.textMuted}>        clear input</Text>
+                    </Box>
+                    <Box>
+                        <Text color={c.green}>⏎</Text>
+                        <Text color={c.textMuted}>          submit</Text>
+                    </Box>
+                    <Box>
+                        <Text color={c.pink}>↑</Text>
+                        <Text color={c.textMuted}> </Text>
+                        <Text color={c.pink}>↓</Text>
+                        <Text color={c.textMuted}>          scroll history (line by line)</Text>
+                    </Box>
+                    <Box>
+                        <Text color={c.pink}>PgUp</Text>
+                        <Text color={c.textMuted}> </Text>
+                        <Text color={c.pink}>PgDn</Text>
+                        <Text color={c.textMuted}>    scroll history (page)</Text>
+                    </Box>
+                    <Box>
+                        <Text color={c.pink}>g</Text>
+                        <Text color={c.textMuted}> </Text>
+                        <Text color={c.pink}>G</Text>
+                        <Text color={c.textMuted}>          jump to oldest / latest</Text>
+                    </Box>
+                </Box>
+            </Box>
+
+            {/* Session */}
+            <Box marginTop={1} flexDirection="column">
+                <Text color={c.accent} bold>◆ Session</Text>
+                <Box marginLeft={2} flexDirection="column">
+                    <Box>
+                        <Text color={c.brand}>/clear</Text>
+                        <Text color={c.textMuted}>     forget chat history</Text>
+                    </Box>
+                    <Box>
+                        <Text color={c.brand}>/reset</Text>
+                        <Text color={c.textMuted}>     reset model to .env default</Text>
+                    </Box>
+                    <Box>
+                        <Text color={c.brand}>/exit</Text>
+                        <Text color={c.textMuted}>      quit KOB CLI</Text>
+                    </Box>
+                </Box>
+            </Box>
+
+            {/* Tips */}
+            <Box marginTop={1} flexDirection="column">
+                <Text color={c.yellow} bold>◆ First time?</Text>
+                <Box marginLeft={2} flexDirection="column">
+                    <Text color={c.textMuted}>1. Run </Text>
+                    <Text color={c.brand}>/config</Text>
+                    <Text color={c.textMuted}> to paste your KOB API key and pick a model.</Text>
+                    <Text color={c.textMuted}>2. Type a task, pick a mode with </Text>
+                    <Text color={c.pink}>Tab</Text>
+                    <Text color={c.textMuted}>, press </Text>
+                    <Text color={c.green}>⏎</Text>
+                    <Text color={c.textMuted}>.</Text>
+                    <Text color={c.textMuted}>3. In </Text>
+                    <Text color={c.green}>Code</Text>
+                    <Text color={c.textMuted}> mode the agent can write files and run shell commands.</Text>
+                </Box>
+            </Box>
+        </Box>
+    );
+}
+
+// ============================================================================
 // BOTTOM BAR
 // ============================================================================
-function BottomBar({ phase, mode }: { phase: Phase; mode: Mode }) {
+function BottomBar({ phase, mode, isFirstStart }: { phase: Phase; mode: Mode; isFirstStart: boolean }) {
     const modeInfo = getMode(mode);
     return (
         <Box
@@ -1261,7 +1399,7 @@ function BottomBar({ phase, mode }: { phase: Phase; mode: Mode }) {
             paddingX={1}
             justifyContent="space-between"
         >
-            <Box>
+            <Box flexWrap="wrap">
                 <Text color={c.green}>⏎ </Text>
                 <Text color={c.textDim}>submit</Text>
                 <Text color={c.borderDim}>  ·  </Text>
@@ -1273,6 +1411,12 @@ function BottomBar({ phase, mode }: { phase: Phase; mode: Mode }) {
                 <Text color={c.borderDim}>  ·  </Text>
                 <Text color={c.brand}>/models</Text>
                 <Text color={c.textDim}> switch</Text>
+                <Text color={c.borderDim}>  ·  </Text>
+                <Text color={c.accent}>/config</Text>
+                <Text color={c.textDim}> {isFirstStart ? 'for first start' : 'edit'}</Text>
+                <Text color={c.borderDim}>  ·  </Text>
+                <Text color={c.accent}>/help</Text>
+                <Text color={c.textDim}> guide</Text>
                 <Text color={c.borderDim}>  ·  </Text>
                 <Text color={c.accent}>Ctrl+C</Text>
                 <Text color={c.textDim}> quit</Text>
@@ -1308,11 +1452,25 @@ function CodeEngine() {
     const [model, setModel] = useState<string>(formatV2Model('DeepSeek', initialConfig.modelId));
     const [palette, setPalette] = useState<null | 'models'>(null);
     const [configOpen, setConfigOpen] = useState<boolean>(false);
+    const [helpOpen, setHelpOpen] = useState<boolean>(false);
     const [banner, setBanner] = useState<string | null>(null);
     const messagesRef = useRef<{ role: string; content: string }[]>([]);
     const modeRef = useRef<Mode>(mode);
     const exchangesLenRef = useRef<number>(0);
     const configRef = useRef(initialConfig);
+
+    // "First start" = no .env file at the project root. The user is running
+    // KOB CLI for the very first time (or in a fresh clone), so we surface
+    // the /config hint more prominently.
+    const isFirstStart = (() => {
+        try {
+            const fs = require('fs') as typeof import('fs');
+            const path = require('path') as typeof import('path');
+            return !fs.existsSync(path.join(process.cwd(), '.env'));
+        } catch {
+            return false;
+        }
+    })();
 
     const showBanner = useCallback((msg: string, ms = 2200) => {
         setBanner(msg);
@@ -1420,7 +1578,7 @@ function CodeEngine() {
                 return true;
             case 'help':
             case '?':
-                showBanner('◆ /ask /plan /code /clear /reset /models /config /help /exit');
+                setHelpOpen(true);
                 return true;
             case 'exit':
             case 'quit':
@@ -1578,6 +1736,8 @@ function CodeEngine() {
                 }} />
             )}
 
+            {helpOpen && <HelpScreen onClose={() => setHelpOpen(false)} />}
+
             {phase === 'generating' ? (
                 <GeneratingPanel messages={getMode(mode).statusMessages} elapsed={now - startMs} />
             ) : (
@@ -1586,11 +1746,11 @@ function CodeEngine() {
                     mode={mode}
                     onModeChange={setMode}
                     visionSupported={modelSupportsVision(model)}
-                    isActive={palette === null && !configOpen && phase === 'input'}
+                    isActive={palette === null && !configOpen && !helpOpen && phase === 'input'}
                 />
             )}
 
-            <BottomBar phase={phase} mode={mode} />
+            <BottomBar phase={phase} mode={mode} isFirstStart={isFirstStart} />
         </Box>
     );
 }
