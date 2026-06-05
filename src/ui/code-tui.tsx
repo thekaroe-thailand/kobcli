@@ -1510,7 +1510,7 @@ function CodeEngine() {
                 setMode('code');
                 showBanner('◆ mode → Code');
                 return true;
-            case 'clear':
+            case 'newchat':
                 setExchanges([]);
                 messagesRef.current = [];
                 exchangesLenRef.current = 0;
@@ -1539,7 +1539,7 @@ function CodeEngine() {
                 return true;
             case 'help':
             case '?':
-                showBanner('◆ /ask /plan /code /clear /reset /models /config /help /exit');
+                showBanner('◆ /ask /plan /code /newchat /reset /models /config /help /exit');
                 return true;
             case 'exit':
             case 'quit':
@@ -1677,9 +1677,6 @@ function CodeEngine() {
                         setModel(modelId);
                         configRef.current = { ...configRef.current, modelId };
                         setPalette(null);
-                        setExchanges([]);
-                        messagesRef.current = [];
-                        exchangesLenRef.current = 0;
                         showBanner(`◆ model → ${displayName} (${modelId})`);
                     }}
                     onClose={() => setPalette(null)}
