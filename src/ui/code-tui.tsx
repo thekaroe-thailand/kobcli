@@ -592,285 +592,262 @@ interface Exchange {
     mode: Mode;
 }
 
-function ResponseBox({ content, modeColor, maxLines = 14 }: { content: string; modeColor: string; maxLines?: number }) {
-    const MAX_CHARS = 4000;
-    const wasCharTruncated = content.length > MAX_CHARS;
-    let text = wasCharTruncated ? content.slice(0, MAX_CHARS) : content;
-    const allLines = text.split('\n');
-    const wasLineTruncated = allLines.length > maxLines;
-    if (wasLineTruncated) {
-        text = allLines.slice(0, maxLines).join('\n');
-    }
-    const finalLines = text.split('\n');
+// ============================================================================
+// LINE BUFFER — flat list of renderable lines, built once per render.
+// This is what makes scrolling smooth: the buffer is a stable array of
+// lines, and the viewport is just a slice. No re-slicing of responses, no
+// re-computation of heights, no layout shift while you scroll.
+// ============================================================================
+const MAX_RESP_LINES = 14;
+const MAX_CMD_CHARS = 1200;
+const MAX_CMD_LINES = 8;
 
-    return (
-        <Box flexDirection="column" marginTop={1} marginLeft={2}>
-            {finalLines.map((line, i) => (
-                <Box key={i}>
-                    {i === 0 ? (
-                        <Text color={modeColor} bold>◀ </Text>
+type LineItem =
+    | { kind: 'header'; roundIdx: number; durationMs: number; modeIcon: string; modeLabel: string; modeColor: string }
+    | { kind: 'input'; text: string }
+    | { kind: 'response-line'; text: string; modeColor: string; isFirst: boolean }
+    | { kind: 'response-trunc'; totalChars: number; totalLines: number }
+    | { kind: 'no-response' }
+    | { kind: 'file-line'; filename: string; add: number; del: number; created: boolean }
+    | { kind: 'cmd-header'; cmd: string; ok: boolean; statusColor: string; exitCode: number; durationMs: number }
+    | { kind: 'cmd-output'; text: string; statusColor: string }
+    | { kind: 'cmd-trunc'; hidden: number; statusColor: string }
+    | { kind: 'meta'; exc: Exchange }
+    | { kind: 'separator' }
+    | { kind: 'blank' };
+
+function buildLineBuffer(exchanges: Exchange[]): LineItem[] {
+    const buf: LineItem[] = [];
+    exchanges.forEach((exc, i) => {
+        const m = getMode(exc.mode);
+        const isLast = i === exchanges.length - 1;
+
+        // Round header
+        buf.push({
+            kind: 'header',
+            roundIdx: i,
+            durationMs: exc.durationMs,
+            modeIcon: m.icon,
+            modeLabel: m.label,
+            modeColor: m.color,
+        });
+
+        // Input
+        buf.push({ kind: 'input', text: exc.input });
+
+        // Response (truncated ONCE here, at build time, so it never re-slices)
+        if (exc.output.trim().length > 0) {
+            const respLines = exc.output.split('\n');
+            const total = respLines.length;
+            const trunc = total > MAX_RESP_LINES;
+            const shown = trunc ? respLines.slice(0, MAX_RESP_LINES) : respLines;
+            shown.forEach((line, j) => {
+                buf.push({
+                    kind: 'response-line',
+                    text: line,
+                    modeColor: m.color,
+                    isFirst: j === 0,
+                });
+            });
+            if (trunc) {
+                buf.push({ kind: 'response-trunc', totalChars: exc.output.length, totalLines: total });
+            }
+        } else {
+            buf.push({ kind: 'no-response' });
+        }
+
+        // Files
+        exc.files.forEach((f) => {
+            buf.push({
+                kind: 'file-line',
+                filename: f.filename,
+                add: f.addLines,
+                del: f.delLines,
+                created: exc.created.includes(f.filename),
+            });
+        });
+
+        // Commands
+        exc.commandResults.forEach((r) => {
+            const statusColor = r.ok ? c.green : c.red;
+            buf.push({
+                kind: 'cmd-header',
+                cmd: r.cmd,
+                ok: r.ok,
+                statusColor,
+                exitCode: r.exitCode,
+                durationMs: r.durationMs,
+            });
+            const out = (r.stdout || '') + (r.stderr ? '\n' + r.stderr : '');
+            const trimmed = out.length > MAX_CMD_CHARS ? out.slice(0, MAX_CMD_CHARS) : out;
+            const lines = trimmed.split('\n');
+            const outTrunc = lines.length > MAX_CMD_LINES;
+            const shownLines = outTrunc ? lines.slice(0, MAX_CMD_LINES) : lines;
+            shownLines.forEach((line) => {
+                buf.push({ kind: 'cmd-output', text: line, statusColor });
+            });
+            if (outTrunc) {
+                buf.push({ kind: 'cmd-trunc', hidden: lines.length - MAX_CMD_LINES, statusColor });
+            }
+        });
+
+        // Meta
+        buf.push({ kind: 'meta', exc });
+
+        if (!isLast) {
+            buf.push({ kind: 'blank' });
+            buf.push({ kind: 'separator' });
+            buf.push({ kind: 'blank' });
+        }
+    });
+    return buf;
+}
+
+function renderLine(item: LineItem, idx: number): React.ReactNode {
+    const key = `L${idx}-${item.kind}`;
+    switch (item.kind) {
+        case 'header':
+            return (
+                <Box key={key}>
+                    <Text color={c.accent} bold>✦ Round {item.roundIdx + 1}</Text>
+                    <Text color={c.textDim}>  ·  {formatDuration(item.durationMs)}</Text>
+                    <Text color={c.textDim}>  ·  </Text>
+                    <Text color={item.modeColor}>{item.modeIcon} {item.modeLabel}</Text>
+                </Box>
+            );
+        case 'input':
+            return (
+                <Box key={key} marginLeft={2}>
+                    <Text color={c.textDim}>❯ </Text>
+                    <Text color={c.text}>{item.text.length > 70 ? item.text.slice(0, 67) + '...' : item.text}</Text>
+                </Box>
+            );
+        case 'response-line':
+            return (
+                <Box key={key} marginLeft={2}>
+                    {item.isFirst ? (
+                        <Text color={item.modeColor} bold>◀ </Text>
                     ) : (
                         <Text>{'  '}</Text>
                     )}
-                    <Text color={c.text}>{line.length === 0 ? ' ' : line}</Text>
+                    <Text color={c.text}>{item.text.length === 0 ? ' ' : item.text}</Text>
                 </Box>
-            ))}
-            {(wasCharTruncated || wasLineTruncated) && (
-                <Text color={c.textDim}>  … (truncated, full response: {content.length} chars / {allLines.length} lines)</Text>
-            )}
-        </Box>
-    );
-}
-
-function CommandResultBox({ result }: { result: CommandResult }) {
-    const MAX_OUT_CHARS = 1200;
-    const MAX_OUT_LINES = 8;
-    const out = (result.stdout || '') + (result.stderr ? '\n' + result.stderr : '');
-    const trimmed = out.length > MAX_OUT_CHARS ? out.slice(0, MAX_OUT_CHARS) : out;
-    const lines = trimmed.split('\n');
-    const truncated = lines.length > MAX_OUT_LINES ? lines.slice(0, MAX_OUT_LINES) : lines;
-    const statusColor = result.ok ? c.green : c.red;
-    const statusIcon = result.ok ? '✓' : '✗';
-
-    return (
-        <Box flexDirection="column" borderStyle="single" borderColor={statusColor} paddingX={1} marginTop={1} marginLeft={2}>
-            <Box>
-                <Text color={statusColor} bold>{statusIcon} </Text>
-                <Text color={c.textDim}>$ </Text>
-                <Text color={c.text} bold>{result.cmd.length > 80 ? result.cmd.slice(0, 77) + '...' : result.cmd}</Text>
-                <Text color={c.textDim}>  ·  </Text>
-                <Text color={statusColor}>exit {result.exitCode}</Text>
-                <Text color={c.textDim}>  ·  {formatDuration(result.durationMs)}</Text>
-            </Box>
-            {truncated.length > 0 && (
-                <Box flexDirection="column" marginTop={1}>
-                    {truncated.map((line, i) => (
-                        <Text key={i} color={c.textMuted}>{line.length === 0 ? ' ' : line}</Text>
-                    ))}
-                    {lines.length > MAX_OUT_LINES && (
-                        <Text color={c.textDim}>  … ({lines.length - MAX_OUT_LINES} more lines)</Text>
+            );
+        case 'response-trunc':
+            return (
+                <Box key={key} marginLeft={2}>
+                    <Text color={c.textDim}>  … (truncated, full response: {item.totalChars} chars / {item.totalLines} lines)</Text>
+                </Box>
+            );
+        case 'no-response':
+            return (
+                <Box key={key} marginLeft={2}>
+                    <Text color={c.red}>✗ (no response received)</Text>
+                </Box>
+            );
+        case 'file-line':
+            return (
+                <Box key={key} marginLeft={2}>
+                    <Text color={item.created ? c.green : c.yellow}>{item.created ? '✓' : '●'}</Text>
+                    <Text>  </Text>
+                    <Text color={c.text} bold>{item.filename}</Text>
+                    <Text color={c.textDim}>  </Text>
+                    <Text color={c.green}>+{item.add}</Text>
+                    {item.del > 0 && (
+                        <>
+                            <Text color={c.textDim}>  </Text>
+                            <Text color={c.red}>-{item.del}</Text>
+                        </>
                     )}
                 </Box>
-            )}
-        </Box>
-    );
-}
-
-function estimateRoundHeight(exc: Exchange, respMax: number): number {
-    const totalResp = exc.output === '' ? 0 : exc.output.split('\n').length;
-    const shownResp = Math.min(respMax, totalResp);
-    const truncMarker = exc.output.trim().length > 0 && totalResp > respMax ? 1 : 0;
-    const noRespLine = exc.output.trim().length === 0 ? 1 : 0;
-
-    let h = 0;
-    h += 1; // round header
-    h += 1; // input line
-    h += 1; // response top margin
-    h += shownResp + truncMarker + noRespLine;
-
-    if (exc.files.length > 0) h += 1 + exc.files.length;
-
-    for (const r of exc.commandResults) {
-        h += 1; // top margin
-        h += 2; // top + bottom border
-        h += 1; // header
-        const out = (r.stdout || '') + (r.stderr ? '\n' + r.stderr : '');
-        const outLines = Math.min(8, out.split('\n').length);
-        h += outLines;
+            );
+        case 'cmd-header':
+            return (
+                <Box key={key} marginLeft={2} marginTop={1}>
+                    <Text color={item.statusColor} bold>{item.ok ? '✓ ' : '✗ '}</Text>
+                    <Text color={c.textDim}>$ </Text>
+                    <Text color={c.text} bold>{item.cmd.length > 80 ? item.cmd.slice(0, 77) + '...' : item.cmd}</Text>
+                    <Text color={c.textDim}>  ·  </Text>
+                    <Text color={item.statusColor}>exit {item.exitCode}</Text>
+                    <Text color={c.textDim}>  ·  {formatDuration(item.durationMs)}</Text>
+                </Box>
+            );
+        case 'cmd-output':
+            return (
+                <Box key={key} marginLeft={4}>
+                    <Text color={c.textMuted}>{item.text.length === 0 ? ' ' : item.text}</Text>
+                </Box>
+            );
+        case 'cmd-trunc':
+            return (
+                <Box key={key} marginLeft={4}>
+                    <Text color={c.textDim}>  … ({item.hidden} more lines)</Text>
+                </Box>
+            );
+        case 'meta':
+            return (
+                <Box key={key} marginLeft={2} marginTop={1}>
+                    <Text color={c.textDim}>↳ </Text>
+                    <Text color={c.textMuted}>{item.exc.output.length} chars</Text>
+                    <Text color={c.textDim}>  ·  </Text>
+                    <Text color={c.textMuted}>↓ {formatNum(item.exc.inTokens)} ↑ {formatNum(item.exc.outTokens)} tok</Text>
+                    <Text color={c.textDim}>  ·  </Text>
+                    <Text color={c.brand}>{item.exc.model}</Text>
+                </Box>
+            );
+        case 'separator':
+            return (
+                <Box key={key}>
+                    <Text color={c.borderDim}>{'─'.repeat(60)}</Text>
+                </Box>
+            );
+        case 'blank':
+            return <Box key={key}><Text> </Text></Box>;
     }
-
-    h += 1; // meta margin
-    h += 1; // meta line
-    h += 2; // blank + separator
-    return h;
-}
-
-function getVisibleWindow(
-    exchanges: Exchange[],
-    maxHeight: number,
-    scrollOffset: number,
-    defaultRespMax: number
-): { visible: Array<{ exc: Exchange; respMax: number; isFirst: boolean; isLast: boolean }>; hiddenAbove: number; hiddenBelow: number } {
-    if (exchanges.length === 0 || maxHeight <= 0) {
-        return { visible: [], hiddenAbove: 0, hiddenBelow: 0 };
-    }
-
-    const items = exchanges.map((exc) => ({
-        exc,
-        respMax: defaultRespMax,
-        height: estimateRoundHeight(exc, defaultRespMax),
-    }));
-    const totalH = items.reduce((s, it) => s + it.height, 0);
-
-    if (totalH <= maxHeight) {
-        return {
-            visible: items.map((it) => ({ exc: it.exc, respMax: it.respMax, isFirst: false, isLast: false })),
-            hiddenAbove: 0,
-            hiddenBelow: 0,
-        };
-    }
-
-    // scrollOffset = lines hidden from top (0 = bottom-aligned)
-    const maxScroll = totalH - maxHeight;
-    const effOffset = Math.max(0, Math.min(scrollOffset, maxScroll));
-    const startLine = totalH - maxHeight - effOffset;
-    const endLine = startLine + maxHeight;
-
-    const visible: Array<{ exc: Exchange; respMax: number; isFirst: boolean; isLast: boolean }> = [];
-    let accum = 0;
-    let isFirst = true;
-    for (const it of items) {
-        const itemStart = accum;
-        const itemEnd = accum + it.height;
-        accum = itemEnd;
-
-        if (itemEnd <= startLine) continue; // fully above
-        if (itemStart >= endLine) break;     // fully below
-
-        const visTop = Math.max(0, startLine - itemStart);
-        const visBot = Math.min(it.height, endLine - itemStart);
-
-        if (visTop === 0 && visBot === it.height) {
-            // fully visible
-            visible.push({ exc: it.exc, respMax: it.respMax, isFirst, isLast: false });
-        } else {
-            // partially visible — slice response to fit
-            const linesBefore = 3; // round header + input + response top margin
-            const respTotal = it.exc.output.split('\n').length;
-            const respTrunc = it.exc.output.trim().length > 0 && respTotal > it.respMax ? 1 : 0;
-            const noResp = it.exc.output.trim().length === 0 ? 1 : 0;
-            const respBlock = Math.min(it.respMax, respTotal) + respTrunc + noResp;
-            const linesAfter = Math.max(0, it.height - linesBefore - respBlock);
-
-            const available = visBot - visTop;
-            const slicedRespMax = Math.max(0, available - linesBefore - linesAfter);
-            visible.push({ exc: it.exc, respMax: slicedRespMax, isFirst, isLast: false });
-        }
-        isFirst = false;
-    }
-
-    return {
-        visible,
-        hiddenAbove: startLine,
-        hiddenBelow: Math.max(0, totalH - endLine),
-    };
 }
 
 function ConversationView({
     exchanges,
     maxHeight,
     scrollOffset,
-    defaultRespMax,
 }: {
     exchanges: Exchange[];
     maxHeight: number;
     scrollOffset: number;
-    defaultRespMax: number;
 }) {
-    if (exchanges.length === 0) {
-        return (
-            <Box flexDirection="column" paddingX={1} paddingY={1}>
-                <Text color={c.textDim}>No rounds yet.</Text>
-                <Text color={c.textMuted}>  Ask the model to start generating code.</Text>
-            </Box>
-        );
-    }
+    if (exchanges.length === 0) return null;
 
-    const { visible, hiddenAbove, hiddenBelow } = getVisibleWindow(
-        exchanges,
-        maxHeight,
-        scrollOffset,
-        defaultRespMax
-    );
+    // Build the flat line buffer once per render. The buffer is the
+    // single source of truth for layout heights — scroll position is
+    // just an index into it, so the view never re-slices responses.
+    const buffer = buildLineBuffer(exchanges);
+    const totalH = buffer.length;
+
+    // scrollOffset = lines hidden from the top of the buffer.
+    // 0        → bottom of conversation (latest content)
+    // max      → top of conversation (oldest content)
+    const totalScrollable = Math.max(0, totalH - maxHeight);
+    const effOffset = Math.max(0, Math.min(scrollOffset, totalScrollable));
+    const startIdx = totalH - maxHeight - effOffset;
+    const endIdx = Math.min(totalH, startIdx + maxHeight);
+    const hiddenAbove = startIdx;
+    const hiddenBelow = Math.max(0, totalH - endIdx);
+
+    const window = buffer.slice(Math.max(0, startIdx), endIdx);
 
     return (
-        <Box flexDirection="column" paddingX={1} paddingY={1}>
+        // No border, no header — keep this area open and spacious.
+        // The welcome / tips now live at the bottom of the screen.
+        <Box flexDirection="column" flexGrow={1} paddingX={1} paddingY={1}>
             {hiddenAbove > 0 && (
                 <Box>
-                    <Text color={c.textDim}>  ↑ {hiddenAbove} line{hiddenAbove === 1 ? '' : 's'} above (PgUp to scroll)</Text>
+                    <Text color={c.textDim}>  ↑ {hiddenAbove} line{hiddenAbove === 1 ? '' : 's'} above (↑/PgUp scroll)</Text>
                 </Box>
             )}
-            {visible.map((v, i) => {
-                const m = getMode(v.exc.mode);
-                const isLast = i === visible.length - 1;
-                return (
-                    <Box key={i} flexDirection="column" marginBottom={isLast ? 0 : 1}>
-                        <Box>
-                            <Text color={c.accent} bold>✦ Round {i + 1}</Text>
-                            <Text color={c.textDim}>  ·  {formatDuration(v.exc.durationMs)}</Text>
-                            <Text color={c.textDim}>  ·  </Text>
-                            <Text color={m.color}>{m.icon} {m.label}</Text>
-                        </Box>
-
-                        {/* Input line */}
-                        <Box marginTop={1} marginLeft={2}>
-                            <Text color={c.textDim}>❯ </Text>
-                            <Text color={c.text}>{v.exc.input.length > 70 ? v.exc.input.slice(0, 67) + '...' : v.exc.input}</Text>
-                        </Box>
-
-                        {/* Response content — the actual AI output */}
-                        {v.exc.output.trim().length > 0 ? (
-                            <ResponseBox content={v.exc.output} modeColor={m.color} maxLines={v.respMax} />
-                        ) : (
-                            <Box marginTop={1} marginLeft={2}>
-                                <Text color={c.red}>✗ (no response received)</Text>
-                            </Box>
-                        )}
-
-                        {/* Files written (code mode only) */}
-                        {v.exc.files.length > 0 && (
-                            <Box flexDirection="column" marginTop={1} marginLeft={2}>
-                                {v.exc.files.map((f, j) => {
-                                    const isCreated = v.exc.created.includes(f.filename);
-                                    return (
-                                        <Box key={j}>
-                                            <Text color={isCreated ? c.green : c.yellow}>{isCreated ? '✓' : '●'}</Text>
-                                            <Text>  </Text>
-                                            <Text color={c.text} bold>{f.filename}</Text>
-                                            <Text color={c.textDim}>  </Text>
-                                            <Text color={c.green}>+{f.addLines}</Text>
-                                            {f.delLines > 0 && (
-                                                <>
-                                                    <Text color={c.textDim}>  </Text>
-                                                    <Text color={c.red}>-{f.delLines}</Text>
-                                                </>
-                                            )}
-                                        </Box>
-                                    );
-                                })}
-                            </Box>
-                        )}
-
-                        {/* Commands run (auto-executed bash blocks) */}
-                        {v.exc.commandResults.length > 0 && (
-                            <Box flexDirection="column">
-                                {v.exc.commandResults.map((r, j) => (
-                                    <CommandResultBox key={j} result={r} />
-                                ))}
-                            </Box>
-                        )}
-
-                        {/* Meta line */}
-                        <Box marginTop={1} marginLeft={2}>
-                            <Text color={c.textDim}>↳ </Text>
-                            <Text color={c.textMuted}>{v.exc.output.length} chars</Text>
-                            <Text color={c.textDim}>  ·  </Text>
-                            <Text color={c.textMuted}>↓ {formatNum(v.exc.inTokens)} ↑ {formatNum(v.exc.outTokens)} tok</Text>
-                            <Text color={c.textDim}>  ·  </Text>
-                            <Text color={c.brand}>{v.exc.model}</Text>
-                        </Box>
-
-                        {!isLast && (
-                            <Box marginTop={1}>
-                                <Text color={c.borderDim}>{'─'.repeat(60)}</Text>
-                            </Box>
-                        )}
-                    </Box>
-                );
-            })}
+            {window.map((item, i) => renderLine(item, startIdx + i))}
             {hiddenBelow > 0 && (
                 <Box>
-                    <Text color={c.textDim}>  ↓ {hiddenBelow} line{hiddenBelow === 1 ? '' : 's'} below (PgDn to scroll)</Text>
+                    <Text color={c.textDim}>  ↓ {hiddenBelow} line{hiddenBelow === 1 ? '' : 's'} below (↓/PgDn scroll)</Text>
                 </Box>
             )}
         </Box>
@@ -881,155 +858,126 @@ function ConversationPanel({
     exchanges,
     maxHeight,
     scrollOffset,
-    defaultRespMax,
     onScrollChange,
 }: {
     exchanges: Exchange[];
     maxHeight: number;
     scrollOffset: number;
-    defaultRespMax: number;
     onScrollChange: (newOffset: number) => void;
 }) {
-    const { hiddenAbove, hiddenBelow, totalScrollable } = getScrollStats(
-        exchanges,
-        maxHeight,
-        defaultRespMax
-    );
+    // Build the same buffer to compute scroll bounds. We could lift the
+    // buffer into CodeEngine and pass it down, but rebuilding it is cheap
+    // (O(n) over the exchanges, which is small).
+    const buffer = exchanges.length === 0 ? [] : buildLineBuffer(exchanges);
+    const totalScrollable = Math.max(0, buffer.length - maxHeight);
 
-    // Detect mouse wheel on the panel (only when exchanges overflow)
+    // Scroll input — handles both line-by-line (↑/↓) and page (PgUp/PgDn)
+    // so users get smooth single-line motion AND big jumps when they want
+    // to fly through long histories.
     useInput((input, key) => {
-        if (exchanges.length === 0 || totalScrollable <= 0) return;
+        if (totalScrollable <= 0) return;
 
-        const STEP = 3;
+        const PAGE_STEP = Math.max(2, maxHeight - 2);
         if (key.pageUp) {
-            onScrollChange(Math.min(totalScrollable, scrollOffset + STEP));
+            onScrollChange(Math.min(totalScrollable, scrollOffset + PAGE_STEP));
         } else if (key.pageDown) {
-            onScrollChange(Math.max(0, scrollOffset - STEP));
-        } else if (input === 'g' && key.shift) {
-            onScrollChange(totalScrollable);
-        } else if (input === 'G') {
-            onScrollChange(totalScrollable);
+            onScrollChange(Math.max(0, scrollOffset - PAGE_STEP));
+        } else if (key.upArrow) {
+            onScrollChange(Math.min(totalScrollable, scrollOffset + 1));
+        } else if (key.downArrow) {
+            onScrollChange(Math.max(0, scrollOffset - 1));
         } else if (input === 'g' && !key.shift) {
-            onScrollChange(0);
+            onScrollChange(totalScrollable); // top of buffer
+        } else if (input === 'G' || (input === 'g' && key.shift)) {
+            onScrollChange(0); // bottom of buffer (latest)
         }
     }, { isActive: true });
 
     return (
-        <Box
-            flexDirection="column"
-            flexGrow={1}
-            borderStyle="round"
-            borderColor={c.border}
-        >
-            <Box paddingX={1} borderStyle="single" borderColor={c.borderDim} borderTop={false} borderLeft={false} borderRight={false}>
-                <Text color={c.brand} bold>◇ </Text>
-                <Text color={c.text} bold>Conversation</Text>
-                <Box flexGrow={1} />
-                <Text color={c.textDim}>{exchanges.length} round{exchanges.length === 1 ? '' : 's'}</Text>
-                {totalScrollable > 0 && (
-                    <Text color={c.textDim}>
-                        {'  '}↑ {hiddenAbove}/{hiddenAbove + hiddenBelow + maxHeight}
-                    </Text>
-                )}
-            </Box>
+        // Borderless, headerless — the conversation flows freely so the
+        // middle of the screen stays open and spacious. When there are
+        // no rounds yet, we render nothing here; the welcome content
+        // (modes + tips) lives at the bottom of the screen.
+        <Box flexDirection="column" flexGrow={1}>
             {exchanges.length === 0 ? (
-                <WelcomeHero />
+                <Box paddingX={1} paddingY={2}>
+                    <Text color={c.textMuted}>  </Text>
+                </Box>
             ) : (
                 <ConversationView
                     exchanges={exchanges}
                     maxHeight={maxHeight}
                     scrollOffset={scrollOffset}
-                    defaultRespMax={defaultRespMax}
                 />
             )}
         </Box>
     );
 }
 
-function getScrollStats(
-    exchanges: Exchange[],
-    maxHeight: number,
-    defaultRespMax: number
-): { hiddenAbove: number; hiddenBelow: number; totalScrollable: number } {
-    if (exchanges.length === 0 || maxHeight <= 0) {
-        return { hiddenAbove: 0, hiddenBelow: 0, totalScrollable: 0 };
-    }
-    const totalH = exchanges.reduce((s, e) => s + estimateRoundHeight(e, defaultRespMax), 0);
-    if (totalH <= maxHeight) {
-        return { hiddenAbove: 0, hiddenBelow: 0, totalScrollable: 0 };
-    }
-    return { hiddenAbove: 0, hiddenBelow: totalH - maxHeight, totalScrollable: totalH - maxHeight };
-}
-
 // ============================================================================
-// WELCOME HERO — shown when no rounds yet
+// WELCOME FOOTER — Three modes + Tips, rendered at the bottom
+// (only when there are no exchanges yet). Compact, single row each.
 // ============================================================================
-function WelcomeHero() {
+function WelcomeFooter() {
     const { frame } = useAnimation({ interval: 1000 });
     const pulse = ['█', '▓', '▒', '░', '▒', '▓'];
     const wave = pulse[frame % pulse.length]!;
 
     return (
-        <Box flexDirection="column" paddingX={1} paddingY={1}>
-            {/* Big greeting line */}
+        <Box
+            flexDirection="column"
+            marginTop={1}
+            borderStyle="round"
+            borderColor={c.borderDim}
+            paddingX={1}
+        >
+            {/* Row 1: greeting */}
             <Box>
                 <Text color={c.brand} bold>{wave} </Text>
                 <Text color={c.text} bold>Welcome to KOB Code Engine</Text>
-            </Box>
-            <Box marginTop={1}>
-                <Text color={c.textMuted}>  Multi-turn code generation powered by AI.</Text>
-            </Box>
-            <Box>
-                <Text color={c.textMuted}>  Choose a mode and start chatting. Switch any time with </Text>
-                <Text color={c.pink}>Tab</Text>
-                <Text color={c.textMuted}>.</Text>
+                <Text color={c.textDim}>  ·  </Text>
+                <Text color={c.textMuted}>pick a mode and start chatting</Text>
             </Box>
 
-            {/* Modes */}
-            <Box marginTop={2}>
-                <Text color={c.accent} bold>✦ Three modes</Text>
-            </Box>
-            <Box flexDirection="column" marginTop={1} marginLeft={2}>
-                {MODES.map(m => (
-                    <Box key={m.key}>
+            {/* Row 2: three modes in one row */}
+            <Box marginTop={1}>
+                <Text color={c.accent} bold>✦ modes </Text>
+                <Text color={c.borderDim}>  </Text>
+                {MODES.map((m, i) => (
+                    <Box key={m.key} marginRight={2}>
                         <Text color={m.color} bold>{m.icon} {m.label}</Text>
-                        <Text color={c.textDim}>  [{m.shortcut}]  </Text>
-                        <Text color={c.textMuted}>{m.description}</Text>
+                        <Text color={c.textDim}> [</Text>
+                        <Text color={c.pink}>{m.shortcut}</Text>
+                        <Text color={c.textDim}>]</Text>
+                        <Text color={c.textMuted}>  {m.description}</Text>
                     </Box>
                 ))}
             </Box>
 
-            {/* Try saying REMOVED */}
-
-            {/* Tips */}
-            <Box marginTop={2}>
-                <Text color={c.yellow} bold>✦ Tips</Text>
-            </Box>
-            <Box flexDirection="column" marginTop={1} marginLeft={2}>
-                <Box>
-                    <Text color={c.borderAccent}>• </Text>
-                    <Text color={c.textMuted}>Press </Text>
-                    <Text color={c.pink}>Tab</Text>
-                    <Text color={c.textMuted}> to cycle modes, or </Text>
-                    <Text color={c.pink}>1</Text>
-                    <Text color={c.textDim}>/</Text>
-                    <Text color={c.pink}>2</Text>
-                    <Text color={c.textDim}>/</Text>
-                    <Text color={c.pink}>3</Text>
-                    <Text color={c.textMuted}> to jump</Text>
-                </Box>
-                <Box>
-                    <Text color={c.borderAccent}>• </Text>
-                    <Text color={c.textMuted}>Mode can be changed any time between rounds</Text>
-                </Box>
-                <Box>
-                    <Text color={c.borderAccent}>• </Text>
-                    <Text color={c.textMuted}>Type </Text>
-                    <Text color={c.pink}>/exit</Text>
-                    <Text color={c.textMuted}> to quit, </Text>
-                    <Text color={c.pink}>Esc</Text>
-                    <Text color={c.textMuted}> to clear the input</Text>
-                </Box>
+            {/* Row 3: tips in a compact line */}
+            <Box marginTop={1}>
+                <Text color={c.yellow} bold>✦ tips   </Text>
+                <Text color={c.borderAccent}>• </Text>
+                <Text color={c.pink}>Tab</Text>
+                <Text color={c.textMuted}>/</Text>
+                <Text color={c.pink}>1</Text>
+                <Text color={c.textMuted}>/</Text>
+                <Text color={c.pink}>2</Text>
+                <Text color={c.textMuted}>/</Text>
+                <Text color={c.pink}>3</Text>
+                <Text color={c.textMuted}> switch mode  </Text>
+                <Text color={c.borderAccent}>• </Text>
+                <Text color={c.brand}>/models</Text>
+                <Text color={c.textMuted}> pick  </Text>
+                <Text color={c.borderAccent}>• </Text>
+                <Text color={c.brand}>/config</Text>
+                <Text color={c.textMuted}> edit  </Text>
+                <Text color={c.borderAccent}>• </Text>
+                <Text color={c.pink}>/exit</Text>
+                <Text color={c.textMuted}> quit  </Text>
+                <Text color={c.borderAccent}>• </Text>
+                <Text color={c.pink}>Esc</Text>
+                <Text color={c.textMuted}> clear input</Text>
             </Box>
         </Box>
     );
@@ -1482,10 +1430,10 @@ function CodeEngine() {
         ? now - startMs
         : (exchanges.length > 0 ? exchanges.reduce((s, e) => s + e.durationMs, 0) : 0);
 
-    // Reserve rows for: brand header (~10), input area (~3), bottom bar (~1), margins/padding (~6)
+    // Reserve rows for: brand header (~10), input area (~3), bottom bar (~1),
+    // welcome footer when present (~5), and margins/padding (~3).
     const RESERVED_ROWS = 22;
     const convMaxHeight = Math.max(8, viewportRows - RESERVED_ROWS);
-    const DEFAULT_RESP_MAX = 14;
 
     // Dispatch a /slash command. Returns true if the input was a slash command
     // (and therefore should NOT be sent to the model).
@@ -1511,9 +1459,11 @@ function CodeEngine() {
                 showBanner('◆ mode → Code');
                 return true;
             case 'newchat':
+            case 'clear':
                 setExchanges([]);
                 messagesRef.current = [];
                 exchangesLenRef.current = 0;
+                setScrollOffset(0);
                 showBanner('◆ session cleared');
                 return true;
             case 'reset': {
@@ -1539,7 +1489,7 @@ function CodeEngine() {
                 return true;
             case 'help':
             case '?':
-                showBanner('◆ /ask /plan /code /newchat /reset /models /config /help /exit');
+                showBanner('◆ /ask /plan /code /clear /reset /models /config /help /exit');
                 return true;
             case 'exit':
             case 'quit':
@@ -1666,7 +1616,6 @@ function CodeEngine() {
                     exchanges={exchanges}
                     maxHeight={convMaxHeight}
                     scrollOffset={scrollOffset}
-                    defaultRespMax={DEFAULT_RESP_MAX}
                     onScrollChange={setScrollOffset}
                 />
             </Box>
@@ -1709,6 +1658,10 @@ function CodeEngine() {
                     isActive={palette === null && !configOpen && phase === 'input'}
                 />
             )}
+
+            {/* Welcome footer — only when no rounds yet.
+                Modes + tips live here at the bottom so the top stays clean. */}
+            {exchanges.length === 0 && phase !== 'generating' && <WelcomeFooter />}
 
             <BottomBar phase={phase} mode={mode} />
         </Box>
