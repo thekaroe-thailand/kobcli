@@ -6,7 +6,8 @@ import { handleApiError } from '../utils/errors.js';
 import { writeFileSync, mkdirSync, existsSync, readFileSync, statSync, copyFileSync } from 'fs';
 import { resolve, basename, join, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
-import { execSync } from 'child_process';
+import { spawnSync } from 'child_process';
+import { chmodSync } from 'fs';
 import { tmpdir, homedir } from 'os';
 import { c } from './colors.js';
 import { ModelPicker } from './model-picker.js';
@@ -127,37 +128,95 @@ export function attachImagePath(srcPath: string): string {
 // Try to read an image from the system clipboard.
 // Returns the absolute path of the saved file, or null if no image in clipboard.
 // Best-effort: Windows via PowerShell, macOS via osascript, Linux via xclip.
+//
+// SECURITY: All external commands are invoked via spawnSync with shell:false
+// and argv-based parameters (no string interpolation). This prevents shell
+// injection from a malicious clipboard payload or crafted path.
 export function pasteImageFromClipboard(): string | null {
     const platform = process.platform;
     try {
         if (platform === 'win32') {
-            // PowerShell: read clipboard image, save to temp png
+            // PowerShell: read clipboard image, save to temp png.
+            // We write the PowerShell script to a temp file and invoke it by
+            // path with -File, passing the destination path as a single argv
+            // element. This avoids quote-escaping bugs entirely.
             const dest = join(kobImagesDir(), `clipboard-${Date.now()}.png`);
-            const script = `
-Add-Type -AssemblyName System.Windows.Forms
-Add-Type -AssemblyName System.Drawing
-$img = [System.Windows.Forms.Clipboard]::GetImage()
-if ($img -eq $null) { exit 1 }
-$img.Save('${dest.replace(/\\/g, '\\\\')}', [System.Drawing.Imaging.ImageFormat]::Png)
-Write-Output "OK"
-`;
-            const out = execSync(`powershell -NoProfile -Command "${script.replace(/\n/g, '; ')}"`, { stdio: ['ignore', 'pipe', 'ignore'] });
-            if (out.toString().includes('OK') && existsSync(dest)) return dest;
-        } else if (platform === 'darwin') {
-            const dest = join(kobImagesDir(), `clipboard-${Date.now()}.png`);
-            execSync(`osascript -e 'set theFile to (open for access "${dest}" with write permission)
-write (the clipboard as «class PNGf») to theFile
-close access theFile'`, { stdio: 'ignore' });
-            if (existsSync(dest) && statSync(dest).size > 0) return dest;
-        } else {
-            // Linux: xclip / wl-paste
-            const dest = join(kobImagesDir(), `clipboard-${Date.now()}.png`);
+            const { writeFileSync, unlinkSync } = require('fs') as typeof import('fs');
+            const { tmpdir: osTmp } = require('os') as typeof import('os');
+            const scriptPath = join(osTmp(), `kob-clip-${process.pid}-${Date.now()}.ps1`);
+            // The script accepts a single $args[0] = destination path. The path
+            // is passed as an argument, never interpolated into the script text.
+            const script = [
+                'Add-Type -AssemblyName System.Windows.Forms',
+                'Add-Type -AssemblyName System.Drawing',
+                `$img = [System.Windows.Forms.Clipboard]::GetImage()`,
+                `if ($img -eq $null) { exit 1 }`,
+                `$dest = $args[0]`,
+                `$img.Save($dest, [System.Drawing.Imaging.ImageFormat]::Png)`,
+                'Write-Output "OK"',
+            ].join('\n');
+            writeFileSync(scriptPath, script, 'utf-8');
             try {
-                execSync(`xclip -selection clipboard -t image/png -o > "${dest}"`, { stdio: 'ignore', shell: '/bin/sh' });
-            } catch {
-                execSync(`wl-paste --type image/png > "${dest}"`, { stdio: 'ignore', shell: '/bin/sh' });
+                const r = spawnSync('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath, dest], {
+                    encoding: 'utf-8',
+                    stdio: ['ignore', 'pipe', 'ignore'],
+                });
+                if (r.stdout && r.stdout.toString().includes('OK') && existsSync(dest)) return dest;
+            } finally {
+                try { unlinkSync(scriptPath); } catch { /* ignore */ }
             }
-            if (existsSync(dest) && statSync(dest).size > 0) return dest;
+        } else if (platform === 'darwin') {
+            // macOS: write the clipboard PNG to dest via osascript.
+            // Pass the path as an argv element; the script reads it from argv.
+            const dest = join(kobImagesDir(), `clipboard-${Date.now()}.png`);
+            const scriptPath = join(tmpdir(), `kob-clip-${process.pid}-${Date.now()}.scpt`);
+            const { writeFileSync: wfs, unlinkSync: ufs } = require('fs') as typeof import('fs');
+            // AppleScript: read the destination from the first command-line arg.
+            // We use `on run argv` so the path is never interpolated into source.
+            const ascript = [
+                'on run argv',
+                '  set theFile to (open for access (item 1 of argv) with write permission)',
+                '  write (the clipboard as «class PNGf») to theFile',
+                '  close access theFile',
+                'end run',
+            ].join('\n');
+            wfs(scriptPath, ascript, 'utf-8');
+            try {
+                spawnSync('osascript', [scriptPath, dest], { stdio: 'ignore' });
+                if (existsSync(dest) && statSync(dest).size > 0) return dest;
+            } finally {
+                try { ufs(scriptPath); } catch { /* ignore */ }
+            }
+        } else {
+            // Linux: xclip / wl-paste. Use spawnSync with argv; redirect stdout
+            // to the destination file via a small wrapper so we don't need a shell.
+            const dest = join(kobImagesDir(), `clipboard-${Date.now()}.png`);
+            const tryBin = (bin: string, extraArgs: string[]): boolean => {
+                // Use shell-free redirect by piping through Node's spawn.
+                // We open dest for writing, then spawn the binary and pipe its
+                // stdout to the file descriptor.
+                const { openSync } = require('fs') as typeof import('fs');
+                const { spawn } = require('child_process') as typeof import('child_process');
+                const fd = openSync(dest, 'w');
+                try {
+                    const child = spawn(bin, extraArgs, { stdio: ['ignore', fd, 'ignore'] });
+                    return new Promise<boolean>((resolvePipe) => {
+                        child.on('close', (code) => resolvePipe(code === 0));
+                        child.on('error', () => resolvePipe(false));
+                    }) as unknown as boolean;
+                } catch {
+                    return false;
+                }
+            };
+            // Try xclip first, then wl-paste
+            if (existsSync('/usr/bin/xclip') || existsSync('/usr/local/bin/xclip')) {
+                const ok = tryBin('xclip', ['-selection', 'clipboard', '-t', 'image/png', '-o']);
+                if (ok && existsSync(dest) && statSync(dest).size > 0) return dest;
+            }
+            if (existsSync('/usr/bin/wl-paste') || existsSync('/usr/local/bin/wl-paste')) {
+                const ok = tryBin('wl-paste', ['--type', 'image/png']);
+                if (ok && existsSync(dest) && statSync(dest).size > 0) return dest;
+            }
         }
     } catch { /* fall through */ }
     return null;
@@ -315,77 +374,158 @@ export function parseShellCommands(content: string): string[] {
     return commands;
 }
 
-// Dangerous command patterns that should be blocked from auto-execution.
-// These match destructive operations commonly found in malicious or accidental AI output.
-const BLOCKED_COMMAND_PATTERNS = [
-    /\brm\s+-rf\b/,
-    /\brm\s+-r\b/,
-    /\bdeltree\b/,
-    /\bdd\s+if=/,
-    /\bmkfs\b/,
-    /\bformat\s+[A-Z]:/i,
-    /\bchmod\s+777\b/,
-    />\s*\/dev\/sd/,
-    /\bcurl\b.*\|\s*(ba)?sh\b/,
-    /\bwget\b.*\|\s*(ba)?sh\b/,
-    /\bgit\s+push\s+--force\b/,
-    /\bgit\s+reset\s+--hard\b/,
-    /\bnpm\s+publish\b/,
-    /\byarn\s+publish\b/,
-];
+// ============================================================================
+// SHELL COMMAND EXECUTION (allowlist + user confirmation)
+// ============================================================================
+// We do NOT use a regex blacklist for shell commands — those are trivially
+// bypassed (tabs, backticks, $VAR, base64, etc.). Instead we use an allowlist
+// of safe command prefixes, and we ALWAYS require explicit user confirmation
+// before executing anything that writes, installs, mutates state, or talks
+// to the network. Read-only commands can run unattended.
 
-function isCommandSafe(cmd: string): { safe: boolean; reason: string } {
-    for (const pattern of BLOCKED_COMMAND_PATTERNS) {
-        if (pattern.test(cmd)) {
-            return { safe: false, reason: `Blocked pattern: ${pattern.source}` };
-        }
-    }
-    return { safe: true, reason: '' };
+const READ_ONLY_COMMANDS = new Set([
+    'ls', 'dir', 'pwd', 'cat', 'head', 'tail', 'less', 'more',
+    'echo', 'printf', 'wc', 'stat', 'file', 'find', 'tree',
+    'git status', 'git log', 'git diff', 'git branch', 'git show',
+    'npm ls', 'npm list', 'npm view', 'npm outdated',
+    'node -v', 'node --version', 'bun --version', 'npm --version',
+    'which', 'where', 'type', 'env', 'printenv',
+]);
+
+function classifyCommand(cmd: string): 'read-only' | 'mutating' | 'unknown' {
+    const firstToken = cmd.trim().split(/\s+/)[0]?.toLowerCase() || '';
+    if (READ_ONLY_COMMANDS.has(firstToken)) return 'read-only';
+    // Common mutating subcommand prefixes
+    const mutatingPrefixes = [
+        'npm install', 'npm i ', 'npm add', 'npm remove', 'npm rm ',
+        'npm run', 'npm test', 'npm run', 'yarn add', 'yarn install', 'yarn remove',
+        'pnpm add', 'pnpm install', 'pnpm remove', 'bun add', 'bun install', 'bun remove',
+        'git add', 'git commit', 'git push', 'git pull', 'git merge', 'git rebase',
+        'git checkout', 'git branch -d', 'git branch -D', 'git stash',
+        'mkdir ', 'rmdir ', 'rm ', 'rm\t', 'mv ', 'cp ', 'touch ',
+        'chmod ', 'chown ', 'curl ', 'wget ', 'ssh ', 'scp ', 'rsync ',
+        '>', '>>', 'tee ', 'sudo ', 'su ',
+    ];
+    const lower = cmd.toLowerCase();
+    if (mutatingPrefixes.some(p => lower.startsWith(p))) return 'mutating';
+    return 'unknown';
 }
 
-export function runShellCommand(cmd: string, cwd: string = process.cwd()): CommandResult {
+// In-memory queue of commands waiting for user approval.
+// Populated by runShellCommand() (which returns a "pending" result) and
+// resolved by confirmPendingCommand() when the user hits y/n in the TUI.
+type PendingCommand = {
+    cmd: string;
+    resolve: (approved: boolean) => void;
+};
+
+const pendingCommands: PendingCommand[] = [];
+let pendingCommandListener: ((cmd: string) => void) | null = null;
+
+export function onPendingCommand(listener: (cmd: string) => void): void {
+    pendingCommandListener = listener;
+}
+
+export function confirmPendingCommand(approved: boolean): void {
+    const next = pendingCommands.shift();
+    if (next) next.resolve(approved);
+    if (pendingCommandListener && pendingCommands.length === 0) {
+        pendingCommandListener('');
+    }
+}
+
+function listPendingCommands(): string[] {
+    return pendingCommands.map(p => p.cmd);
+}
+
+export function runShellCommand(
+    cmd: string,
+    cwd: string = process.cwd(),
+    opts: { autoApproveReadOnly?: boolean; userApprover?: (cmd: string) => Promise<boolean> } = {}
+): CommandResult | Promise<CommandResult> {
     const t0 = Date.now();
-    // Strip a leading "$ " or "❯ " prompt if the model wrote one
     const cleaned = cmd.split('\n').map(l => l.replace(/^\s*[\$❯]\s?/, '')).join('\n');
 
-    // Security check: reject dangerous commands
-    const check = isCommandSafe(cleaned);
-    if (!check.safe) {
-        return {
-            cmd: cleaned,
-            ok: false,
-            stdout: '',
-            stderr: `[SECURITY] Command blocked: ${check.reason}. Add --allow-unsafe to bypass.`,
-            durationMs: Date.now() - t0,
-            exitCode: 1,
-        };
+    const classification = classifyCommand(cleaned);
+
+    // Read-only commands may run without confirmation
+    if (classification === 'read-only' && opts.autoApproveReadOnly !== false) {
+        return executeCommand(cleaned, cwd, t0);
     }
 
-    try {
-        const stdout = execSync(cleaned, {
-            encoding: 'utf-8',
-            timeout: 60_000,
-            cwd,
-            stdio: ['ignore', 'pipe', 'pipe'],
-            shell: process.platform === 'win32' ? 'cmd.exe' : '/bin/sh',
+    // Mutating / unknown commands require user approval
+    if (opts.userApprover) {
+        return opts.userApprover(cleaned).then(approved => {
+            if (!approved) {
+                return {
+                    cmd: cleaned,
+                    ok: false,
+                    stdout: '',
+                    stderr: '[SECURITY] Command blocked: user denied execution.',
+                    durationMs: Date.now() - t0,
+                    exitCode: 1,
+                } as CommandResult;
+            }
+            return executeCommand(cleaned, cwd, t0);
         });
+    }
+
+    // No approver registered (e.g. running from the `code` CLI command, not the TUI).
+    // Refuse to run anything mutating without explicit approval.
+    return {
+        cmd: cleaned,
+        ok: false,
+        stdout: '',
+        stderr: `[SECURITY] Command refused: "${classifyCommand(cleaned)}" command requires user approval. Run from the interactive TUI to confirm.`,
+        durationMs: Date.now() - t0,
+        exitCode: 1,
+    } as CommandResult;
+}
+
+function executeCommand(cleaned: string, cwd: string, t0: number): CommandResult {
+    try {
+        // Use spawn (not execSync with shell:true) so the command runs without
+        // an extra shell layer. The first whitespace-separated token is the
+        // binary; everything else is an argv. This eliminates shell-injection
+        // vectors like `;`, `|`, backticks, $().
+        const { spawnSync } = require('child_process') as typeof import('child_process');
+        const parts = cleaned.match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g) || [];
+        const [bin, ...args] = parts;
+        if (!bin) {
+            return {
+                cmd: cleaned,
+                ok: false,
+                stdout: '',
+                stderr: '[SECURITY] Empty command.',
+                durationMs: Date.now() - t0,
+                exitCode: 1,
+            };
+        }
+        const result = spawnSync(bin, args, {
+            encoding: 'utf-8',
+            cwd,
+            timeout: 60_000,
+            stdio: ['ignore', 'pipe', 'pipe'],
+            // shell: false (the default) — do NOT use a shell wrapper.
+            shell: false,
+        });
+        if (result.error) throw result.error;
         return {
             cmd: cleaned,
-            ok: true,
-            stdout: (stdout || '').toString(),
-            stderr: '',
+            ok: result.status === 0,
+            stdout: (result.stdout || '').toString(),
+            stderr: (result.stderr || '').toString(),
             durationMs: Date.now() - t0,
-            exitCode: 0,
+            exitCode: typeof result.status === 'number' ? result.status : 1,
         };
     } catch (err: any) {
-        const e = err as any;
         return {
             cmd: cleaned,
             ok: false,
-            stdout: e.stdout ? e.stdout.toString() : '',
-            stderr: e.stderr ? e.stderr.toString() : (e.message || 'command failed'),
+            stdout: err.stdout ? err.stdout.toString() : '',
+            stderr: err.stderr ? err.stderr.toString() : (err.message || 'command failed'),
             durationMs: Date.now() - t0,
-            exitCode: typeof e.status === 'number' ? e.status : 1,
+            exitCode: typeof err.status === 'number' ? err.status : 1,
         };
     }
 }
@@ -497,15 +637,15 @@ interface SlashCommand {
     group: 'mode' | 'session' | 'meta';
 }
 const SLASH_COMMANDS: SlashCommand[] = [
-    { name: 'ask',     desc: 'switch to Ask mode (questions only)',    icon: '💡', group: 'mode' },
-    { name: 'plan',    desc: 'switch to Plan mode (design first)',     icon: '○',  group: 'mode' },
-    { name: 'code',    desc: 'switch to Code mode (full agent)',       icon: '●',  group: 'mode' },
-    { name: 'clear',   desc: 'clear this session (forget history)',    icon: '⌫',  group: 'session' },
-    { name: 'reset',   desc: 'reset model to the .env default',        icon: '↺',  group: 'session' },
-    { name: 'models',  desc: 'pick a model from the catalog',          icon: '◆',  group: 'session' },
-    { name: 'config',  desc: 'edit base_url, key, model → .env',       icon: '⚙',  group: 'meta' },
-    { name: 'help',    desc: 'list every slash command',               icon: '?',  group: 'meta' },
-    { name: 'exit',    desc: 'quit KOB CLI',                           icon: '⎋',  group: 'meta' },
+    { name: 'ask', desc: 'switch to Ask mode (questions only)', icon: '💡', group: 'mode' },
+    { name: 'plan', desc: 'switch to Plan mode (design first)', icon: '○', group: 'mode' },
+    { name: 'code', desc: 'switch to Code mode (full agent)', icon: '●', group: 'mode' },
+    { name: 'clear', desc: 'clear this session (forget history)', icon: '⌫', group: 'session' },
+    { name: 'reset', desc: 'reset model to the .env default', icon: '↺', group: 'session' },
+    { name: 'models', desc: 'pick a model from the catalog', icon: '◆', group: 'session' },
+    { name: 'config', desc: 'edit base_url, key, model → .env', icon: '⚙', group: 'meta' },
+    { name: 'help', desc: 'list every slash command', icon: '?', group: 'meta' },
+    { name: 'exit', desc: 'quit KOB CLI', icon: '⎋', group: 'meta' },
 ];
 
 // ============================================================================
@@ -1204,7 +1344,7 @@ function InputBox({ onSubmit, mode, onModeChange, visionSupported, placeholder, 
                 setPasteHint(`📎 ${basename(dest)}`);
                 setTimeout(() => setPasteHint(null), 2500);
                 return;
-            } catch {/* fall through to text insert */}
+            } catch {/* fall through to text insert */ }
         }
         setValue(prev => prev.slice(0, cursorRef.current) + text + prev.slice(cursorRef.current));
         setCursorPos(i => i + text.length);
@@ -1610,10 +1750,36 @@ function CodeEngine() {
     const [configOpen, setConfigOpen] = useState<boolean>(false);
     const [helpOpen, setHelpOpen] = useState<boolean>(false);
     const [banner, setBanner] = useState<string | null>(null);
+    // SECURITY: Pending shell command waiting for user approval. When set, the
+    // TUI shows a y/n prompt. The shell command in runShellCommand() blocks on
+    // this promise until the user responds.
+    const [pendingApproval, setPendingApproval] = useState<{ cmd: string; resolve: (ok: boolean) => void } | null>(null);
     const messagesRef = useRef<{ role: string; content: string }[]>([]);
     const modeRef = useRef<Mode>(mode);
     const exchangesLenRef = useRef<number>(0);
     const configRef = useRef(initialConfig);
+
+    // askUserApproval: callback passed to runShellCommand(). Shows a prompt
+    // and resolves the inner promise when the user hits y or n.
+    const askUserApproval = useCallback((cmd: string): Promise<boolean> => {
+        return new Promise<boolean>((resolve) => {
+            setPendingApproval({ cmd, resolve });
+        });
+    }, []);
+
+    // Keyboard handler for the approval prompt. y/Enter approves, n/Esc denies.
+    useInput((input, key) => {
+        if (!pendingApproval) return;
+        if (input === 'y' || input === 'Y' || key.return) {
+            const r = pendingApproval.resolve;
+            setPendingApproval(null);
+            r(true);
+        } else if (input === 'n' || input === 'N' || key.escape) {
+            const r = pendingApproval.resolve;
+            setPendingApproval(null);
+            r(false);
+        }
+    }, { isActive: !!pendingApproval });
 
     // "First start" = no .env file at the project root. The user is running
     // KOB CLI for the very first time (or in a fresh clone), so we surface
@@ -1809,14 +1975,22 @@ function CodeEngine() {
                 }
             }
 
-            // After the response finishes, run files AND shell commands automatically
-            // (no prompts, no confirmations — the user wants hands-off execution)
+            // After the response finishes, run files AND shell commands automatically.
+            // Read-only shell commands (ls, cat, git status, etc.) are allowed
+            // without prompting. Anything else (npm install, git push, rm, curl, ...)
+            // goes through the user-approval queue so the user sees a y/n prompt.
             const files = modeInfo.writesFiles ? parseFileChanges(fullContent) : [];
             const created = modeInfo.writesFiles ? writeFiles(files) : [];
             const shellCommands = currentMode === 'code' ? parseShellCommands(fullContent) : [];
             const commandResults: CommandResult[] = [];
             for (const cmd of shellCommands) {
-                commandResults.push(runShellCommand(cmd));
+                // Wrap sync result in a Promise so the for-loop can await both
+                // sync read-only and async approval paths uniformly.
+                const result = await Promise.resolve(runShellCommand(cmd, process.cwd(), {
+                    autoApproveReadOnly: true,
+                    userApprover: askUserApproval,
+                }));
+                commandResults.push(result);
             }
 
             // Build a follow-up assistant message that summarises the command outputs
@@ -1850,7 +2024,7 @@ function CodeEngine() {
             handleApiError(error);
             process.exit(1);
         }
-    }, [model, handleSlashCommand]);
+    }, [model, handleSlashCommand, askUserApproval]);
 
     return (
         <Box flexDirection="column" paddingX={1}>
@@ -1912,6 +2086,35 @@ function CodeEngine() {
             )}
 
             {helpOpen && <HelpScreen onClose={() => setHelpOpen(false)} />}
+
+            {/* SECURITY: Approval prompt for mutating shell commands.
+                Shown above the input area when the AI wants to run something
+                that could change state (npm install, git push, rm, curl, etc.) */}
+            {pendingApproval && (
+                <Box
+                    flexDirection="column"
+                    borderStyle="round"
+                    borderColor={c.yellow}
+                    paddingX={1}
+                    marginTop={1}
+                >
+                    <Box>
+                        <Text color={c.yellow} bold>⚠  Shell command requires approval</Text>
+                    </Box>
+                    <Box marginTop={1}>
+                        <Text color={c.text}>  $ </Text>
+                        <Text color={c.text} bold>{pendingApproval.cmd}</Text>
+                    </Box>
+                    <Box marginTop={1}>
+                        <Text color={c.textDim}>Allow execution? </Text>
+                        <Text color={c.green} bold>[y]</Text>
+                        <Text color={c.textDim}> yes  ·  </Text>
+                        <Text color={c.red} bold>[n]</Text>
+                        <Text color={c.textDim}> no  ·  </Text>
+                        <Text color={c.textDim}>[Esc] cancel</Text>
+                    </Box>
+                </Box>
+            )}
 
             {phase === 'generating' ? (
                 <GeneratingPanel messages={getMode(mode).statusMessages} elapsed={now - startMs} />

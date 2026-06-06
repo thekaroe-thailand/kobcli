@@ -1,4 +1,4 @@
-import { readFileSync, writeFileSync, existsSync } from 'fs';
+import { readFileSync, writeFileSync, existsSync, chmodSync } from 'fs';
 import { join } from 'path';
 
 const ENV_CANDIDATES = ['.env.local', '.env'];
@@ -112,6 +112,16 @@ export function writeEnvFile(
     }
 
     writeFileSync(p, out.join('\n'));
+
+    // SECURITY: Lock down the .env file so other users on the same machine
+    // can't read the API key. On Windows, chmod has limited effect, but on
+    // POSIX systems this changes mode from default 0644 (world-readable) to
+    // 0600 (owner read/write only). Failure to chmod is non-fatal.
+    try {
+        chmodSync(p, 0o600);
+    } catch {
+        // ignore — Windows or filesystem doesn't support it
+    }
 }
 
 /**
