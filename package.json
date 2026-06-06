@@ -1,6 +1,6 @@
 {
   "name": "kob-cli",
-  "version": "1.0.32",
+  "version": "1.0.33",
   "description": "KOB CLI — AI-powered code generation tool. Built by Kob AI, made in Thailand.",
   "type": "module",
   "bin": {
