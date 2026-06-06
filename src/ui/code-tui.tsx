@@ -176,14 +176,31 @@ export interface FileChange {
 
 export function writeFiles(files: FileChange[]): string[] {
     const created: string[] = [];
+    const cwd = resolve(process.cwd());
+
     for (const f of files) {
         if (!f.content) continue;
-        const filePath = resolve(process.cwd(), f.filename);
+
+        // Sanitize filename: strip leading slashes, backslashes, and "../" sequences
+        // to prevent path traversal attacks (e.g. "../../etc/passwd")
+        let safeName = f.filename
+            .replace(/^[/\\]+/, '')     // strip leading slashes
+            .replace(/\.\.\//g, '')      // strip ../ path traversal
+            .replace(/\.\.\\/g, '');     // strip ..\ (Windows)
+
+        const filePath = resolve(cwd, safeName);
+
+        // Prevent writing outside the project directory
+        if (!filePath.startsWith(cwd + '/') && !filePath.startsWith(cwd + '\\')) {
+            throw new Error(
+                `Security: Refusing to write file outside project directory: ${f.filename}`
+            );
+        }
+
         const dir = dirname(filePath);
         if (!existsSync(dir)) {
             mkdirSync(dir, { recursive: true });
         }
-        const existed = existsSync(filePath);
         writeFileSync(filePath, f.content, 'utf-8');
         created.push(f.filename);
     }
@@ -298,10 +315,52 @@ export function parseShellCommands(content: string): string[] {
     return commands;
 }
 
+// Dangerous command patterns that should be blocked from auto-execution.
+// These match destructive operations commonly found in malicious or accidental AI output.
+const BLOCKED_COMMAND_PATTERNS = [
+    /\brm\s+-rf\b/,
+    /\brm\s+-r\b/,
+    /\bdeltree\b/,
+    /\bdd\s+if=/,
+    /\bmkfs\b/,
+    /\bformat\s+[A-Z]:/i,
+    /\bchmod\s+777\b/,
+    />\s*\/dev\/sd/,
+    /\bcurl\b.*\|\s*(ba)?sh\b/,
+    /\bwget\b.*\|\s*(ba)?sh\b/,
+    /\bgit\s+push\s+--force\b/,
+    /\bgit\s+reset\s+--hard\b/,
+    /\bnpm\s+publish\b/,
+    /\byarn\s+publish\b/,
+];
+
+function isCommandSafe(cmd: string): { safe: boolean; reason: string } {
+    for (const pattern of BLOCKED_COMMAND_PATTERNS) {
+        if (pattern.test(cmd)) {
+            return { safe: false, reason: `Blocked pattern: ${pattern.source}` };
+        }
+    }
+    return { safe: true, reason: '' };
+}
+
 export function runShellCommand(cmd: string, cwd: string = process.cwd()): CommandResult {
     const t0 = Date.now();
     // Strip a leading "$ " or "❯ " prompt if the model wrote one
     const cleaned = cmd.split('\n').map(l => l.replace(/^\s*[\$❯]\s?/, '')).join('\n');
+
+    // Security check: reject dangerous commands
+    const check = isCommandSafe(cleaned);
+    if (!check.safe) {
+        return {
+            cmd: cleaned,
+            ok: false,
+            stdout: '',
+            stderr: `[SECURITY] Command blocked: ${check.reason}. Add --allow-unsafe to bypass.`,
+            durationMs: Date.now() - t0,
+            exitCode: 1,
+        };
+    }
+
     try {
         const stdout = execSync(cleaned, {
             encoding: 'utf-8',

@@ -185,11 +185,16 @@ export class KobApiClient {
     }
 
     async get<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
-        const queryParams = new URLSearchParams({ api_key: this.apiKey, ...params });
-        if (this.apiToken) queryParams.set('api_token', this.apiToken);
+        // Send API key via Authorization header, NOT in URL query string.
+        // Query params are logged in server access logs, proxies, and referrers.
+        const queryParams = new URLSearchParams(params);
+        const headers = {
+            ...this.getHeaders(),
+            'Authorization': `Bearer ${this.bearerToken || this.apiKey}`,
+        };
 
         const response = await fetch(`${this.baseUrl}${endpoint}?${queryParams.toString()}`, {
-            method: 'GET', headers: this.getHeaders(),
+            method: 'GET', headers,
         });
 
         const text = await response.text();
