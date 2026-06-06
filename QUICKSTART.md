@@ -30,6 +30,12 @@ You should see your user info and credit balance.
 
 ## 3. Common Tasks
 
+### Launch TUI (Recommended)
+```bash
+kob
+```
+Full-screen interactive coding agent. Switch modes with Tab: **Ask** → **Plan** → **Code**
+
 ### Check Balance
 ```bash
 kob balance
@@ -38,6 +44,16 @@ kob balance
 ### List Available Models
 ```bash
 kob models
+```
+
+### Ask a Quick Question
+```bash
+kob ask "What is the difference between let and const?"
+```
+
+### Generate Code
+```bash
+kob code "Write a Python script that reads a CSV and outputs JSON"
 ```
 
 ### Chat with AI
@@ -61,49 +77,7 @@ kob stream "Write a poem about coding"
 
 ---
 
-## 4. Project Management
-
-### Create a Project
-```bash
-kob projects:create "My Chatbot"
-```
-
-### Add Rules to Project
-```bash
-kob rules:create \
-  --project-id YOUR_PROJECT_ID \
-  --text "Always respond in Thai" \
-  --type required
-```
-
-### Chat with Project Rules
-```bash
-kob chat "สวัสดี" \
-  --project-id YOUR_PROJECT_ID
-```
-
----
-
-## 5. View History
-
-### Credit History
-```bash
-kob credits:history
-```
-
-### List Projects
-```bash
-kob projects:list
-```
-
-### List Rules
-```bash
-kob rules:list --project-id YOUR_PROJECT_ID
-```
-
----
-
-## 6. Help & Documentation
+## 4. Help & Documentation
 
 ### View All Commands
 ```bash
@@ -112,12 +86,15 @@ kob --help
 
 ### Command-Specific Help
 ```bash
+kob ask --help
+kob code --help
 kob chat --help
-kob projects --help
 ```
 
 ### Full Documentation
-See [README.md](README.md) for complete documentation.
+- [README.md](README.md) — Overview and commands
+- [MANUAL.md](MANUAL.md) — Full user manual (Thai)
+- [PROJECT.md](PROJECT.md) — Architecture details
 
 ---
 
@@ -136,11 +113,11 @@ See [README.md](README.md) for complete documentation.
 
 ## Next Steps
 
-1. ✅ Try different AI models
-2. ✅ Create projects for different use cases
-3. ✅ Set up rules to control AI behavior
-4. ✅ Use streaming for long responses
-5. ✅ Monitor your credit usage
+1. ✅ Launch the TUI with `kob` for interactive coding
+2. ✅ Try `kob ask` for quick Q&A
+3. ✅ Use `kob code` to generate and save files
+4. ✅ Try different AI models with `kob models`
+5. ✅ Use streaming for long responses
 
 ---
 

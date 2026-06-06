@@ -6,13 +6,14 @@ Developed by **Kob AI** — [www.kob-ai.dev](https://www.kob-ai.dev) | Developer
 
 ## ✨ Features
 
+- 🖥️ **TUI Mode** - Full-screen interactive coding agent (default when running `kob` with no args)
 - 🔐 **Authentication** - Verify credentials and check balance
 - 💬 **AI Chat** - Send messages and get AI responses
 - 🌊 **Streaming** - Real-time streaming AI responses
+- 💡 **Ask** - Quick one-shot question answering
+- 💻 **Code** - AI code generation with auto file creation
 - 🤖 **Models** - Browse available AI models and pricing
-- 📁 **Projects** - Create, update, list, and delete projects
-- 📜 **Rules** - Manage project rules (forbidden, required, custom)
-- 💰 **Credits** - View credit history and transactions
+- 🧠 **Skills** - List all available CLI skills
 - 🎨 **Rich Output** - Beautiful terminal output with colors and formatting
 
 ## 🚀 Quick Start
@@ -69,6 +70,20 @@ bun dev <command>
 
 ## 📖 Commands
 
+### TUI Mode (Default)
+
+Run `kob` with no arguments to launch the full-screen interactive TUI:
+```bash
+kob
+```
+
+The TUI has 3 modes switchable with Tab or `1`/`2`/`3`:
+- **Ask** (`/ask`) — Quick Q&A
+- **Plan** (`/plan`) — Get an implementation plan before coding
+- **Code** (`/code`) — Generate code + auto-run shell commands
+
+Slash commands inside TUI: `/models`, `/config`, `/clear`, `/help`, `/exit`
+
 ### Authentication
 
 **Verify credentials:**
@@ -82,6 +97,14 @@ Shows user information, package details, and credit balance.
 bun dev balance
 ```
 Quick check of your current credit balance.
+
+### Ask
+
+**Ask a one-shot question:**
+```bash
+bun dev ask "What is a closure in JavaScript?"
+bun dev ask "อธิบาย recursion หน่อย" --provider DeepSeek --model deepseek-chat
+```
 
 ### AI Chat
 
@@ -100,11 +123,19 @@ bun dev chat:interactive \
   --model openai/gpt-4o
 ```
 
-Interactive commands:
-- `/clear` - Clear conversation history
-- `/stats` - Show conversation statistics
-- `/help` - Show available commands
-- `/exit` - Exit chat mode
+Interactive commands: `/clear`, `/stats`, `/help`, `/exit`
+
+### Code Generation
+
+**Generate code:**
+```bash
+bun dev code "Write a REST API in Python" --lang python
+```
+
+If no prompt is given, launches the TUI in Code mode:
+```bash
+bun dev code
+```
 
 ### Streaming
 
@@ -134,79 +165,16 @@ bun dev models --provider DeepSeek
 bun dev models --format json
 ```
 
-### Projects
+### Skills
 
-**List projects:**
+**List all available CLI skills:**
 ```bash
-bun dev projects:list
-```
-
-**Create project:**
-```bash
-bun dev projects:create "My Chatbot" \
-  --description "AI chatbot for customer support"
-```
-
-**Update project:**
-```bash
-bun dev projects:update <project-id> \
-  --name "Updated Name" \
-  --description "New description"
-```
-
-**Delete project:**
-```bash
-bun dev projects:delete <project-id>
-```
-
-### Rules
-
-**List rules:**
-```bash
-bun dev rules:list --project-id <project-id>
-```
-
-**Create rule:**
-```bash
-bun dev rules:create \
-  --project-id <project-id> \
-  --text "Must respond in Thai only" \
-  --type required
-```
-
-Rule types:
-- `forbidden` - 🚫 Things AI must not do
-- `required` - ✅ Things AI must do
-- `custom` - 📌 Custom rules
-
-**Update rule:**
-```bash
-bun dev rules:update <rule-id> \
-  --project-id <project-id> \
-  --text "Updated rule text" \
-  --active false
-```
-
-**Delete rule:**
-```bash
-bun dev rules:delete <rule-id> --project-id <project-id>
-```
-
-### Credits
-
-**View credit history:**
-```bash
-bun dev credits:history
-```
-
-**With pagination:**
-```bash
-bun dev credits:history --limit 50 --offset 0
+bun dev skills
 ```
 
 ## 🔧 Options
 
-### Chat & Stream Options
+### Chat, Ask, Stream & Code Options
 
 | Option | Description | Default |
 |--------|-------------|---------|
@@ -214,8 +182,8 @@ bun dev credits:history --limit 50 --offset 0
 | `-m, --model` | Model ID | deepseek-chat |
 | `-t, --temperature` | Temperature (0.0-2.0) | 0.7 |
 | `--max-tokens` | Maximum tokens | 4096 |
-| `--project-id` | Project ID for rules | - |
 | `--system-prompt` | System prompt | - |
+| `--lang` | Programming language hint (code command only) | - |
 
 ### Common Providers and Models
 
@@ -247,26 +215,24 @@ bun dev auth:verify
 # 2. Check available models
 bun dev models --provider DeepSeek
 
-# 3. Create a project
-bun dev projects:create "Customer Support Bot"
+# 3. Ask a quick question
+bun dev ask "อธิบาย async/await ใน JavaScript"
 
-# 4. Add rules to project
-bun dev rules:create \
-  --project-id <id> \
-  --text "Always respond in Thai" \
-  --type required
+# 4. Generate code
+bun dev code "Write a Express.js REST API with CRUD endpoints" --lang javascript
 
-# 5. Chat with AI using project rules
-bun dev chat "สวัสดี ช่วยแนะนำสินค้าหน่อย" \
-  --project-id <id>
+# 5. Chat interactively
+bun dev chat:interactive --provider DeepSeek --model deepseek-chat
 
 # 6. Stream response for longer content
 bun dev stream "Write a detailed guide about AI" \
   --model openai/gpt-4o
 
-# 7. Check credit usage
+# 7. Check credit balance
 bun dev balance
-bun dev credits:history
+
+# 8. Or just launch TUI for everything
+kob
 ```
 
 ## 🛠 Development
@@ -276,22 +242,30 @@ bun dev credits:history
 ```
 kob-cli/
 ├── src/
-│   ├── index.ts              # CLI entry point
-│   ├── commands/             # Command implementations
-│   │   ├── auth.ts          # Authentication commands
-│   │   ├── chat.ts          # Chat commands
-│   │   ├── stream.ts        # Streaming command
-│   │   ├── models.ts        # Models command
-│   │   ├── projects.ts      # Project CRUD
-│   │   ├── rules.ts         # Rules CRUD
-│   │   └── credits.ts       # Credit history
+│   ├── index.ts              # CLI entry point (also launches TUI if no args)
+│   ├── commands/             # One-shot CLI commands
+│   │   ├── auth.ts          # auth:verify, balance
+│   │   ├── chat.ts          # chat, chat:interactive
+│   │   ├── stream.ts        # stream
+│   │   ├── models.ts        # models
+│   │   ├── ask.ts           # ask
+│   │   ├── code.ts          # code
+│   │   └── skills.ts        # skills
+│   ├── ui/                  # TUI (full-screen mode)
+│   │   ├── code-tui.tsx     # Main TUI component (CodeEngine)
+│   │   ├── colors.ts        # Shared color tokens
+│   │   ├── model-picker.tsx # Model selection overlay
+│   │   └── config-form.tsx  # .env editor overlay
 │   ├── utils/               # Utility modules
-│   │   ├── api.ts           # API client
-│   │   ├── config.ts        # Configuration
+│   │   ├── api.ts           # API client (KobApiClient)
+│   │   ├── config.ts        # Configuration (getConfig)
+│   │   ├── env-file.ts      # .env read/write
 │   │   ├── format.ts        # Output formatting
 │   │   └── errors.ts        # Error handling
 │   └── types/               # TypeScript types
 │       └── index.ts
+├── bin/
+│   └── cli.cjs              # CJS shim entry point
 ├── .env.example             # Environment variables template
 ├── package.json
 └── README.md
@@ -329,16 +303,13 @@ This creates a compiled binary `kob-cli.exe`.
 - List available models with `bun dev models`
 - Verify the model ID is correct
 
-## 📝 API Documentation
+## 📝 Documentation
 
-For detailed API documentation, see the official KOB AI API docs in the parent directory:
-- `/my-app/docs/api-token-verify.md`
-- `/my-app/docs/api-ai-chat.md`
-- `/my-app/docs/api-ai-stream.md`
-- `/my-app/docs/api-models.md`
-- `/my-app/docs/api-projects.md`
-- `/my-app/docs/api-project-rules.md`
-- `/my-app/docs/api-credit-history.md`
+- [MANUAL.md](MANUAL.md) — คู่มือการใช้งานฉบับเต็ม (ภาษาไทย)
+- [QUICKSTART.md](QUICKSTART.md) — เริ่มต้นใช้งานอย่างรวดเร็ว
+- [PROJECT.md](PROJECT.md) — สถาปัตยกรรมและโครงสร้างโปรเจค
+- [AGENTS.md](AGENTS.md) — คู่มือสำหรับนักพัฒนา / AI agents
+- [SPECTS.md](SPECTS.md) — Technical specifications
 
 ## 📄 License
 

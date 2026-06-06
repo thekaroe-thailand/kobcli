@@ -14,32 +14,36 @@ This document provides comprehensive specifications for AI agents working on the
 │            (src/index.ts)                    │
 └──────────────┬──────────────────────────────┘
                │
-               │ Commander.js
+               │ Commander.js / no-args → TUI
                ▼
-┌─────────────────────────────────────────────┐
-│            Command Layer                     │
-│  (src/commands/*.ts)                         │
-│  - auth.ts, chat.ts, stream.ts              │
-│  - models.ts, projects.ts, rules.ts         │
-│  - credits.ts                                │
-└──────────────┬──────────────────────────────┘
-               │
-               │ Business Logic
-               ▼
+┌──────────────────────┬──────────────────────┐
+│   Command Layer      │    TUI Layer          │
+│ (src/commands/*.ts)  │  (src/ui/*.tsx)       │
+│ - auth.ts            │  - code-tui.tsx       │
+│ - chat.ts            │  - model-picker.tsx   │
+│ - stream.ts          │  - config-form.tsx    │
+│ - models.ts          │  - colors.ts          │
+│ - ask.ts             │                       │
+│ - code.ts            │                       │
+│ - skills.ts          │                       │
+└──────────┬───────────┴──────────┬────────────┘
+           │                      │
+           ▼                      ▼
 ┌─────────────────────────────────────────────┐
 │            Utility Layer                     │
 │  (src/utils/*.ts)                            │
 │  - api.ts (HTTP Client)                      │
 │  - config.ts (Configuration)                 │
+│  - env-file.ts (.env read/write)             │
 │  - format.ts (Output Formatting)             │
 │  - errors.ts (Error Handling)                │
 └──────────────┬──────────────────────────────┘
                │
-               │ Fetch API
+               │ HTTPS
                ▼
 ┌─────────────────────────────────────────────┐
 │          KOB AI API Server                   │
-│  https://www.kob-ai.dev/api/*                 │
+│  https://www.kob-ai.dev/api/*                │
 └─────────────────────────────────────────────┘
 ```
 
@@ -48,8 +52,8 @@ This document provides comprehensive specifications for AI agents working on the
 #### 1. Entry Point (`src/index.ts`)
 - Initialize Commander.js program
 - Register all commands
-- Display help text
 - Parse command-line arguments
+- If no subcommand given → call `runCodeTui()` (TUI mode)
 
 #### 2. Command Layer (`src/commands/`)
 
@@ -67,40 +71,45 @@ This document provides comprehensive specifications for AI agents working on the
 **models.ts**
 - `models` - List available AI models
 
-**projects.ts**
-- `projects:list` - List all projects
-- `projects:create` - Create new project
-- `projects:update` - Update existing project
-- `projects:delete` - Delete project
+**ask.ts**
+- `ask` - One-shot question answering (streaming)
 
-**rules.ts**
-- `rules:list` - List project rules
-- `rules:create` - Create new rule
-- `rules:update` - Update existing rule
-- `rules:delete` - Delete rule
+**code.ts**
+- `code` - AI code generation; launches TUI if no prompt given
 
-**credits.ts**
-- `credits:history` - View credit top-up history
+**skills.ts**
+- `skills` - List all available CLI skills
 
-#### 3. Utility Layer (`src/utils/`)
+#### 3. TUI Layer (`src/ui/`)
+
+**code-tui.tsx**
+- `runCodeTui()` - Launch the full-screen Ink/React TUI
+- `CodeEngine` - Main React component managing all TUI state
+- Handles 3 modes: Ask, Plan, Code
+- Auto-executes shell commands and writes files in Code mode
+
+**model-picker.tsx** - Overlay for selecting AI model from API
+**config-form.tsx** - Overlay for editing .env credentials
+**colors.ts** - Shared color token object (`c.*`)
+
+#### 4. Utility Layer (`src/utils/`)
 
 **api.ts**
 - `KobApiClient` class
-- HTTP methods: GET, POST, PATCH, DELETE
-- Streaming support with async generators
-- Automatic authentication injection
-- Error handling
+- `chatStream()` - Async generator for SSE streaming
+- `chatComplete()` - Accumulate stream to string
+- Automatic Bearer token injection
 
 **config.ts**
-- `getConfig()` - Load environment variables
-- `validateConfig()` - Validate configuration
-- Fallback to default values
+- `getConfig()` - Read from `process.env` (Bun auto-loads .env)
+- Supports `kob_xxx:token` combined key format
+
+**env-file.ts**
+- `readEnvFile()` / `writeEnvFile()` - Read/write .env files directly
+- Preserves comments and key ordering
 
 **format.ts**
 - `formatDate()` - Format timestamps
-- `formatProjects()` - Format project list
-- `formatRules()` - Format rules list
-- `formatCreditHistory()` - Format credit history
 - `formatUsage()` - Format usage statistics
 
 **errors.ts**
@@ -108,10 +117,9 @@ This document provides comprehensive specifications for AI agents working on the
 - `handleApiError()` - User-friendly error messages
 - `validateRequired()` - Input validation
 
-#### 4. Type Definitions (`src/types/index.ts`)
+#### 5. Type Definitions (`src/types/index.ts`)
 - All TypeScript interfaces
-- API response types
-- Request/Response schemas
+- API response types (`ModelsResponse`, `ChatResponse`, `StreamEvent`, `UserToken`, etc.)
 
 ## Development Guidelines
 
@@ -149,17 +157,15 @@ const data = await client.post<ResponseType>('/api/endpoint', {
   key: 'value'
 });
 
-// GET request
-const data = await client.get<ResponseType>('/api/endpoint', {
-  param: 'value'
-});
-
-// Streaming
-for await (const event of client.stream('/api/stream', body)) {
-  if (event.type === 'chunk') {
-    // Handle chunk
-  }
+// Streaming (async generator — yields OpenAI-compatible SSE chunks)
+for await (const chunk of client.chatStream(model, messages, options)) {
+  const delta = chunk.choices?.[0]?.delta?.content;
+  if (delta) process.stdout.write(delta);
 }
+
+// Accumulate full response
+const result = await client.chatComplete(model, messages, options);
+// result = { content, model, usage }
 ```
 
 ### Error Handling Pattern
@@ -198,29 +204,32 @@ const data = await client.post<ChatResponse>('/api/ai/chat', body);
    - [ ] `auth:verify` with invalid credentials
    - [ ] `balance` command
 
-2. **Chat**
+2. **Ask**
+   - [ ] `ask` with different providers and models
+
+3. **Chat**
    - [ ] `chat` with different providers
    - [ ] `chat:interactive` mode
-   - [ ] Chat with project rules
 
-3. **Streaming**
+4. **Code**
+   - [ ] `code "..."` generates and writes files
+   - [ ] `code` (no args) launches TUI
+
+5. **Streaming**
    - [ ] `stream` with different models
    - [ ] Stream error handling
 
-4. **Models**
+6. **Models**
    - [ ] `models` list all
    - [ ] `models --provider` filter
    - [ ] `models --format json`
 
-5. **Projects**
-   - [ ] Create, list, update, delete
-
-6. **Rules**
-   - [ ] Create, list, update, delete
-   - [ ] Different rule types
-
-7. **Credits**
-   - [ ] `credits:history` with pagination
+7. **TUI**
+   - [ ] Launch with `kob` (no args)
+   - [ ] Switch modes (Ask / Plan / Code)
+   - [ ] `/models` overlay
+   - [ ] `/config` overlay
+   - [ ] `/clear` resets history
 
 ### Common Test Scenarios
 
@@ -228,15 +237,20 @@ const data = await client.post<ChatResponse>('/api/ai/chat', body);
 # Test authentication
 bun dev auth:verify
 
+# Test ask
+bun dev ask "What is TypeScript?"
+
 # Test chat
 bun dev chat "Hello" --provider DeepSeek --model deepseek-chat
 
 # Test streaming
 bun dev stream "Tell me a story" --model deepseek-chat
 
-# Test projects
-bun dev projects:create "Test Project"
-bun dev projects:list
+# Test code generation
+bun dev code "Write a hello world in Go" --lang go
+
+# Launch TUI
+kob
 ```
 
 ## Best Practices
@@ -294,7 +308,6 @@ export KOB_API_KEY=xxx
 
 2. **Batch Operations**
    - Process multiple messages from file
-   - Bulk project/rule management
 
 3. **Configuration File**
    - Save default provider/model preferences
