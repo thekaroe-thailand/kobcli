@@ -1102,10 +1102,18 @@ function InputBox({ onSubmit, mode, onModeChange, visionSupported, placeholder, 
     const [attachments, setAttachments] = useState<string[]>([]);
     const [pasteHint, setPasteHint] = useState<string | null>(null);
     const [slashIdx, setSlashIdx] = useState<number>(0);
+    const [cursorPos, setCursorPos] = useState<number>(0);
+    const cursorRef = useRef(cursorPos);
+    cursorRef.current = cursorPos;
     const { frame } = useAnimation({ interval: 500 });
     const cursorVisible = frame % 2 === 0;
     const modeInfo = getMode(mode);
     const ph = placeholder ?? modeInfo.placeholder;
+
+    // Keep cursorPos in bounds when value changes externally (slash fill, paste, etc.)
+    useEffect(() => {
+        setCursorPos(prev => Math.min(prev, value.length));
+    }, [value]);
 
     // Slash-command autocomplete: only show when the user typed "/" and
     // has not yet pressed space (which would mean they're past the command).
@@ -1139,7 +1147,8 @@ function InputBox({ onSubmit, mode, onModeChange, visionSupported, placeholder, 
                 return;
             } catch {/* fall through to text insert */}
         }
-        setValue(prev => prev + text);
+        setValue(prev => prev.slice(0, cursorRef.current) + text + prev.slice(cursorRef.current));
+        setCursorPos(i => i + text.length);
     });
 
     useInput((char, key) => {
@@ -1193,6 +1202,22 @@ function InputBox({ onSubmit, mode, onModeChange, visionSupported, placeholder, 
             }
             return;
         }
+        if (key.leftArrow) {
+            setCursorPos((i) => Math.max(0, i - 1));
+            return;
+        }
+        if (key.rightArrow) {
+            setCursorPos((i) => Math.min(value.length, i + 1));
+            return;
+        }
+        if (key.home) {
+            setCursorPos(0);
+            return;
+        }
+        if (key.end) {
+            setCursorPos(value.length);
+            return;
+        }
         if (key.return) {
             const trimmed = value.trim();
             // If the popup is open, Enter fills the highlighted command (or executes it
@@ -1205,6 +1230,7 @@ function InputBox({ onSubmit, mode, onModeChange, visionSupported, placeholder, 
                         onSubmit('/' + cmd.name, attachments);
                         setValue('');
                         setAttachments([]);
+                        setCursorPos(0);
                     } else {
                         // Partial — fill in the rest, user can keep typing
                         setValue('/' + cmd.name + ' ');
@@ -1220,22 +1246,31 @@ function InputBox({ onSubmit, mode, onModeChange, visionSupported, placeholder, 
                 onSubmit(trimmed, attachments);
                 setValue('');
                 setAttachments([]);
+                setCursorPos(0);
             }
             return;
         }
         if (key.backspace || key.delete) {
             if (value.length > 0) {
-                setValue(prev => prev.slice(0, -1));
+                if (key.backspace && cursorPos > 0) {
+                    setValue(prev => prev.slice(0, cursorPos - 1) + prev.slice(cursorPos));
+                    setCursorPos(i => i - 1);
+                } else if (key.delete && cursorPos < value.length) {
+                    setValue(prev => prev.slice(0, cursorPos) + prev.slice(cursorPos + 1));
+                } else if (value.length > 0) {
+                    setValue(prev => prev.slice(0, -1));
+                    setCursorPos(i => Math.max(0, i - 1));
+                }
             } else if (attachments.length > 0) {
                 setAttachments(prev => prev.slice(0, -1));
             }
             return;
         }
         if (char && char.length === 1) {
-            setValue(prev => prev + char);
+            setValue(prev => prev.slice(0, cursorPos) + char + prev.slice(cursorPos));
+            setCursorPos(i => i + 1);
         }
     }, { isActive });
-
     const isEmpty = value.length === 0 && attachments.length === 0;
     const borderColor = disabled ? c.borderDim : modeInfo.color;
     const showCursor = !disabled && isActive && cursorVisible;
@@ -1271,8 +1306,9 @@ function InputBox({ onSubmit, mode, onModeChange, visionSupported, placeholder, 
                     </>
                 ) : (
                     <>
-                        <Text color={c.text}>{value}</Text>
+                        <Text color={c.text}>{value.slice(0, cursorPos)}</Text>
                         {showCursor && <Text color={modeInfo.color}>{'▌'}</Text>}
+                        <Text color={c.text}>{value.slice(cursorPos)}</Text>
                     </>
                 )}
             </Box>
