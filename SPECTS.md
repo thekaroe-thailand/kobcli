@@ -519,34 +519,38 @@ Common model IDs:
 // API Client
 - post() with valid data
 - post() with invalid credentials
-- get() with query params
-- stream() event parsing
+- chatStream() SSE parsing
+- chatComplete() accumulation
 - Error handling
 
 // Commands
 - auth:verify output format
+- ask streaming output
 - chat message formatting
+- code file parsing and creation
 - models filtering
-- projects CRUD operations
-- rules CRUD operations
-- credits pagination
+- skills listing
 
 // Utilities
 - formatDate() accuracy
-- formatProjects() layout
-- formatRules() layout
+- formatUsage() layout
 - validateRequired() checks
 ```
 
 ### Integration Tests
 
 1. **Full workflow test:**
-   - auth:verify → models → projects:create → rules:create → chat → credits:history
+   - auth:verify → models → ask → code → chat → balance
 
-2. **Error scenarios:**
+2. **TUI smoke tests:**
+   - Launch TUI (no args)
+   - Switch modes (Ask / Plan / Code)
+   - /models overlay opens and closes
+   - /config overlay saves to .env
+
+3. **Error scenarios:**
    - Invalid credentials
    - Insufficient credits
-   - Invalid project ID
    - Network timeout
 
 ## Compatibility

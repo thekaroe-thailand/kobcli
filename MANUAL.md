@@ -9,8 +9,17 @@
 **หลังติดตั้งแล้ว ใช้คำสั่ง `kob` ได้เลย:**
 
 ```bash
+# เปิด TUI (โหมดหลัก)
+kob
+
 # เช็คการเชื่อมต่อ
 kob auth:verify
+
+# ถามคำถามแบบ one-shot
+kob ask "อธิบาย async/await หน่อย"
+
+# เขียนโค้ด
+kob code "Write a Python script to read CSV"
 
 # แชทกับ AI
 kob chat "สวัสดีครับ"
@@ -31,10 +40,10 @@ kob balance
 
 1. [ติดตั้งและตั้งค่า](#ติดตั้งและตั้งค่า)
 2. [คำสั่งพื้นฐาน](#คำสั่งพื้นฐาน)
-3. [ใช้งาน AI Chat](#ใช้งาน-ai-chat)
-4. [จัดการโปรเจค](#จัดการโปรเจค)
-5. [ตั้งกฏให้ AI](#ตั้งกฏให้-ai)
-6. [ดูเครดิต](#ดูเครดิต)
+3. [TUI Mode (โหมดหลัก)](#tui-mode-โหมดหลัก)
+4. [Ask — ถามคำถาม](#ask--ถามคำถาม)
+5. [Code — เขียนโค้ด](#code--เขียนโค้ด)
+6. [ใช้งาน AI Chat](#ใช้งาน-ai-chat)
 7. [เทคนิคขั้นสูง](#เทคนิคขั้นสูง)
 8. [แก้ปัญหา](#แก้ปัญหา)
 
@@ -84,6 +93,72 @@ kob <command> --help
 # ตัวอย่าง:
 kob chat --help
 ```
+
+---
+
+## TUI Mode (โหมดหลัก)
+
+รัน `kob` โดยไม่มี argument เพื่อเปิด full-screen TUI:
+
+```bash
+kob
+```
+
+TUI มี 3 โหมด สลับด้วย Tab หรือกด `1` / `2` / `3`:
+
+| โหมด | ไอคอน | ใช้ทำอะไร |
+|------|------|-----------|
+| Ask | 💡 | ถามคำถาม ตอบแบบกระชับ |
+| Plan | ◐ | ขอ implementation plan ก่อนลงมือ |
+| Code | ◉ | เขียนโค้ด + รัน shell commands อัตโนมัติ + สร้างไฟล์ |
+
+**Slash commands ใน TUI:**
+
+| คำสั่ง | ผล |
+|--------|-----|
+| `/ask` `/plan` `/code` | เปลี่ยนโหมด |
+| `/models` | เปิด model picker overlay |
+| `/config` | แก้ไข API key / model ใน .env |
+| `/clear` | ล้างประวัติการคุย |
+| `/help` | แสดง help |
+| `/exit` | ออกจาก TUI |
+
+**Keyboard:**
+- ← → เลื่อน cursor ในช่อง input
+- PgUp / PgDn / `g` / `G` เลื่อนดู conversation
+- Ctrl+V วางรูปภาพ (path-based)
+
+---
+
+## Ask — ถามคำถาม
+
+```bash
+kob ask "ข้อความที่ต้องการถาม"
+```
+
+**ตัวอย่าง:**
+```bash
+kob ask "อธิบาย closure ใน JavaScript"
+kob ask "What is a binary tree?" --provider DeepSeek --model deepseek-chat
+```
+
+---
+
+## Code — เขียนโค้ด
+
+```bash
+kob code "คำอธิบายโค้ดที่ต้องการ"
+```
+
+**ตัวอย่าง:**
+```bash
+kob code "Write a REST API in Python using FastAPI" --lang python
+kob code "สร้าง todo list app ด้วย React" --temperature 0.3
+```
+
+ถ้า AI ตอบกลับด้วย code block ที่มี filename comment จะสร้างไฟล์ให้อัตโนมัติ
+
+รัน `kob code` โดยไม่มี prompt เพื่อเปิด TUI ใน Code mode
 
 ---
 
@@ -175,164 +250,6 @@ kob stream "เขียนบทความยาวๆ เกี่ยวก�
 
 ---
 
-## จัดการโปรเจค
-
-โปรเจคใช้สำหรับเก็บงานและกฏของ AI
-
-### 1. ดูโปรเจคทั้งหมด
-```bash
-kob projects:list
-```
-
-### 2. สร้างโปรเจคใหม่
-```bash
-kob projects:create "ชื่อโปรเจค" --description "รายละเอียด"
-```
-
-**ตัวอย่าง:**
-```bash
-kob projects:create "แชทบอทขายของ" \
-  --description "AI chatbot สำหรับร้านค้าออนไลน์"
-```
-
-### 3. แก้ไขโปรเจค
-```bash
-kob projects:update PROJECT_ID \
-  --name "ชื่อใหม่" \
-  --description "รายละเอียดใหม่"
-```
-
-**ตัวอย่าง:**
-```bash
-kob projects:update abc-123-def \
-  --name "แชทบอท V2"
-```
-
-### 4. ลบโปรเจค
-```bash
-kob projects:delete PROJECT_ID
-```
-
-**ตัวอย่าง:**
-```bash
-kob projects:delete abc-123-def
-```
-
-⚠️ **คำเตือน:** การลบโปรเจคจะลบกฏทั้งหมดของโปรเจคนั้นด้วย!
-
----
-
-## ตั้งกฏให้ AI
-
-กฏใช้ควบคุมพฤติกรรม AI ในแต่ละโปรเจค
-
-### ประเภทของกฏ:
-- `forbidden` (🚫) - สิ่งที่ AI **ห้ามทำ**
-- `required` (✅) - สิ่งที่ AI **ต้องทำ**
-- `custom` (📌) - กฏทั่วไป
-
-### 1. ดูกฏของโปรเจค
-```bash
-kob rules:list --project-id PROJECT_ID
-```
-
-### 2. สร้างกฏใหม่
-
-**กฏแบบ Forbidden (ห้ามทำ):**
-```bash
-kob rules:create \
-  --project-id PROJECT_ID \
-  --text "ห้ามตอบเกี่ยวกับการเมือง" \
-  --type forbidden
-```
-
-**กฏแบบ Required (ต้องทำ):**
-```bash
-kob rules:create \
-  --project-id PROJECT_ID \
-  --text "ต้องตอบเป็นภาษาไทยเท่านั้น" \
-  --type required
-```
-
-**กฏแบบ Custom (ทั่วไป):**
-```bash
-kob rules:create \
-  --project-id PROJECT_ID \
-  --text "ตอบสั้นๆ ไม่เกิน 3 ประโยค" \
-  --type custom
-```
-
-### 3. แก้ไขกฏ
-```bash
-kob rules:update RULE_ID \
-  --project-id PROJECT_ID \
-  --text "ข้อความใหม่" \
-  --type required \
-  --active true
-```
-
-**ปิดใช้งานกฏชั่วคราว:**
-```bash
-kob rules:update RULE_ID \
-  --project-id PROJECT_ID \
-  --active false
-```
-
-### 4. ลบกฏ
-```bash
-kob rules:delete RULE_ID \
-  --project-id PROJECT_ID
-```
-
-### 5. ใช้โปรเจคพร้อมกฏตอนแชท
-
-```bash
-kob chat "สวัสดี" \
-  --project-id PROJECT_ID
-```
-
-AI จะทำตามกฏที่ตั้งไว้ทั้งหมด!
-
----
-
-## ดูเครดิต
-
-### 1. เช็คยอดเงินคงเหลือ
-```bash
-kob balance
-```
-
-**ตัวอย่าง output:**
-```
-💰 Your Credit Balance:
-────────────────────────────────────────────────────────────
-Balance: 250 credits
-1 credit = $0.01 USD
-Approximate USD value: $2.50
-```
-
-### 2. ดูประวัติเติมเครดิต
-```bash
-kob credits:history
-```
-
-**แสดง 20 รายการล่าสุด:**
-```bash
-kob credits:history --limit 20 --offset 0
-```
-
-**แสดง 50 รายการ:**
-```bash
-kob credits:history --limit 50
-```
-
-**ดูหน้าถัดไป (ข้าม 50 รายการแรก):**
-```bash
-kob credits:history --offset 50
-```
-
----
-
 ## เทคนิคขั้นสูง
 
 ### 1. ใช้ System Prompt
@@ -375,29 +292,20 @@ kob auth:verify
 # 2. ดูโมเดล
 kob models --provider DeepSeek
 
-# 3. สร้างโปรเจค
-kob projects:create "ผู้ช่วยเขียนโค้ด"
+# 3. ถามคำถามเร็วๆ
+kob ask "อธิบาย design pattern Observer"
 
-# 4. ตั้งกฏ
-kob rules:create \
-  --project-id YOUR_ID \
-  --text "ตอบเป็นภาษาไทย" \
-  --type required
+# 4. สร้างโค้ด
+kob code "Write a Python FastAPI CRUD app" --lang python
 
-kob rules:create \
-  --project-id YOUR_ID \
-  --text "ห้ามตอบเกี่ยวกับการเมือง" \
-  --type forbidden
+# 5. แชทแบบต่อเนื่อง
+kob chat:interactive --provider DeepSeek --model deepseek-chat
 
-# 5. เริ่มใช้งาน
-kob chat:interactive \
-  --project-id YOUR_ID \
-  --provider DeepSeek \
-  --model deepseek-chat
+# 6. หรือเปิด TUI ทำทุกอย่างในที่เดียว
+kob
 
-# 6. เช็คเครดิต
+# 7. เช็คเครดิต
 kob balance
-kob credits:history
 ```
 
 ### 5. JSON Output
@@ -440,15 +348,6 @@ kob models --format json
 2. เติมเครดิตที่ https://www.kob-ai.dev
 3. รอ 1-2 นาที แล้วลองใหม่
 
-### ❌ Resource not found
-
-**สาเหตุ:** PROJECT_ID หรือ RULE_ID ไม่ถูกต้อง
-
-**วิธีแก้:**
-1. ดูโปรเจคทั้งหมด: `kob projects:list`
-2. คัดลอก ID ที่ถูกต้อง
-3. ลองใหม่อีกครั้ง
-
 ### ❌ AI provider error
 
 **สาเหตุ:** AI Provider มีปัญหา หรือโมเดลถูกถอน
@@ -474,20 +373,20 @@ kob models --format json
 ### ประหยัดเครดิต
 1. ใช้ `deepseek-v4-flash` สำหรับงานทั่วไป (ถูกสุด)
 2. ตั้ง `--max-tokens` ให้เหมาะสม
-3. ใช้ Interactive mode แทนการส่ง chat หลายครั้ง
-4. ตรวจสอบเครดิตบ่อยๆ ด้วย `balance`
+3. ใช้ Interactive mode หรือ TUI แทนการส่ง chat หลายครั้ง
+4. ตรวจสอบเครดิตบ่อยๆ ด้วย `kob balance`
 
 ### ได้คำตอบที่ดี
-1. ตั้ง System Prompt ให้ชัดเจน
-2. ใช้ Project Rules ควบคุม AI
-3. ปรับ temperature ให้เหมาะกับงาน
-4. ให้ context เพียงพอในข้อความ
+1. ตั้ง System Prompt ให้ชัดเจน (`--system-prompt`)
+2. ปรับ temperature ให้เหมาะกับงาน
+3. ให้ context เพียงพอในข้อความ
+4. ใช้ TUI ใน Plan mode ก่อน แล้วค่อยสลับไป Code mode
 
-### ใช้งาน efisien
-1. ใช้ chat:interactive สำหรับคุยยาวๆ
-2. ใช้ stream สำหรับข้อความยาว
-3. สร้าง project แยกตามการใช้งาน
-4. ตั้ง rules ไว้ล่วงหน้า
+### ใช้งาน efficient
+1. เปิด TUI (`kob`) สำหรับงาน coding ทั่วไป
+2. ใช้ `kob ask` สำหรับคำถามเร็วๆ
+3. ใช้ `kob chat:interactive` สำหรับคุยยาวๆ
+4. ใช้ `kob stream` สำหรับข้อความยาวที่อยากเห็น real-time
 
 ---
 
@@ -496,8 +395,8 @@ kob models --format json
 - **เอกสารครบถ้วน:** อ่าน [README.md](README.md)
 - **ข้อมูลเทคนิค:** อ่าน [SPECTS.md](SPECTS.md)
 - **เริ่มต้นเร็ว:** อ่าน [QUICKSTART.md](QUICKSTART.md)
-- **เติมเครดิต:** https://www.kob-ai.dev
-- **ดู API Keys:** https://www.kob-ai.dev
+- **สถาปัตยกรรม:** อ่าน [PROJECT.md](PROJECT.md)
+- **เติมเครดิต / ดู API Keys:** https://www.kob-ai.dev
 
 ---
 
@@ -505,21 +404,16 @@ kob models --format json
 
 | คำสั่ง | หน้าที่ | ตัวอย่าง |
 |--------|---------|----------|
+| *(ไม่มี args)* | เปิด TUI mode | `kob` |
 | `auth:verify` | เช็คการเชื่อมต่อ | `kob auth:verify` |
 | `balance` | ดูยอดเงิน | `kob balance` |
+| `ask` | ถามคำถาม one-shot | `kob ask "What is Go?"` |
+| `code` | สร้างโค้ด | `kob code "Write a REST API"` |
 | `chat` | ส่งข้อความ | `kob chat "Hello"` |
 | `chat:interactive` | คุยต่อเนื่อง | `kob chat:interactive` |
 | `stream` | ตอบแบบ real-time | `kob stream "Write..."` |
 | `models` | ดูโมเดล | `kob models` |
-| `projects:list` | ดูโปรเจค | `kob projects:list` |
-| `projects:create` | สร้างโปรเจค | `kob projects:create "Name"` |
-| `projects:update` | แก้ไขโปรเจค | `kob projects:update ID --name "New"` |
-| `projects:delete` | ลบโปรเจค | `kob projects:delete ID` |
-| `rules:list` | ดูกฏ | `kob rules:list --project-id ID` |
-| `rules:create` | สร้างกฏ | `kob rules:create --project-id ID --text "..." --type required` |
-| `rules:update` | แก้ไขกฏ | `kob rules:update ID --project-id ID --text "..."` |
-| `rules:delete` | ลบกฏ | `kob rules:delete ID --project-id ID` |
-| `credits:history` | ดูประวัติเครดิต | `kob credits:history` |
+| `skills` | ดู skills ที่มี | `kob skills` |
 
 ---
 
