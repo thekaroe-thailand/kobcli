@@ -1,132 +1,156 @@
 ---
-title: "01 — Architecture"
+title: "01 - Architecture"
 type: architecture
 status: active
 created: 2026-06-05
-updated: 2026-06-05
+updated: 2026-06-07
 tags:
   - kob-cli
   - architecture
   - runtime
 ---
 
-# 01 — Architecture
+# 01 - Architecture
 
 ## Runtime stack
 
-| Layer | Tool | Why |
-|------|------|-----|
-| Package manager + runtime | **Bun ≥ 1.3** | Fast TS execution, native binary compile, `bun build --compile` |
-| Language | **TypeScript** (strict, ESM, `type: "module"`) | Type safety + Node ecosystem |
-| TUI framework | **Ink 7.0.5** + **React 19** | React-style components for the terminal |
-| CLI parser | **commander 15** | Standard subcommand registration |
-| Streams | Native Web Streams (`ReadableStream`) | Used by `KobApiClient.chatStream` |
-| Styling | **chalk** + `[[colors]]` token map | Color tokens shared across TUI files |
-| Loading spinners | **ora 9** | (Currently unused in TUI mode; we use custom Ink animation) |
+| Layer | Technology | Purpose |
+|------|------------|---------|
+| Runtime | Bun for development, Node-compatible APIs, compiled Bun binary for release | executes the CLI and build pipeline |
+| Language | TypeScript + ESM | strongly typed implementation |
+| Command parser | commander | public CLI surface |
+| Terminal rendering | chalk + custom console rendering helpers | banners, status, diffs, markdown, prompts |
+| Backend client | `KobApiClient` | model catalog and streaming responses |
+| Local persistence | JSON files in `~/.kob-cli/sessions` | cwd-scoped transcript resume |
 
-## Top-level data flow
+## High-level architecture
 
-```
-                     ┌──────────────────────────────┐
-   user input        │  bin/cli.cjs                 │
- ──────────────────► │  └─► bun src/index.ts        │
-                     └─────────────┬────────────────┘
-                                   │
-                                   ▼
-                     ┌──────────────────────────────┐
-                     │  src/index.ts (Commander)    │
-                     │  • reads pkg.version         │
-                     │  • registers subcommands     │
-                     │  • no subcommand → runCodeTui│
-                     └─────────────┬────────────────┘
-                                   │
-            ┌──────────────────────┼──────────────────────┐
-            ▼                      ▼                      ▼
-  src/commands/*.ts      src/ui/code-tui.tsx     src/scripts/release.ts
-  (one-shot CLI)         (default TUI mode)      (npm publish helper)
-            │                      │
-            ▼                      ▼
-   src/utils/api.ts        src/utils/api.ts
-   (KobApiClient)          (KobApiClient.chatStream)
-            │                      │
-            └──────────┬───────────┘
-                       ▼
-              KOB AI API (HTTPS)
-        https://www.kob-ai.dev/api/v2/chat/completions
-        https://www.kob-ai.dev/api/v2/models
+The current codebase is organized around a small number of runtime layers:
+
+```text
+User
+  |
+  v
+src/index.ts
+  |-- kob models
+  |-- kob ask <prompt...>
+  |-- kob config
+  `-- kob chat / default
+           |
+           v
+       src/repl.ts
+           |
+           v
+   src/core/engine.ts
+      |        |        |
+      |        |        +-- src/tools/shell.ts
+      |        +----------- src/tools/files.ts
+      +-------------------- src/tools/parser.ts
+           |
+           v
+     src/core/api.ts
+           |
+           v
+     KOB AI HTTP API
 ```
 
-## Module responsibilities
+## Entry flow
 
-### Entry: `bin/cli.cjs` + `src/index.ts`
+`src/index.ts` is the only authoritative entry point.
 
-- `bin/cli.cjs` is a CommonJS shim that `spawn`s `bun src/index.ts` and prints a friendly error if Bun is missing.
-- `src/index.ts`:
-  - reads its own `package.json` via `readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'package.json'))` to get the dynamic `version`.
-  - registers every subcommand (`auth:verify`, `chat`, `stream`, `models`, etc.).
-  - if no subcommand → `await runCodeTui()` (the TUI in `src/ui/code-tui.tsx`).
+Responsibilities:
 
-### `src/commands/*.ts` (one-shot CLI mode)
+- reads version from `package.json`
+- registers the four public commands
+- loads configuration when required
+- delegates interactive usage to `runRepl()`
+- handles top-level fatal exceptions and promise rejections
 
-- Each file exports a `Command` instance from `commander`.
-- They share utilities from `src/utils/` (api, config, format, errors).
+The root-level `index.ts` file is not the shipping entry point.
 
-### `src/ui/code-tui.tsx` (default TUI mode)
+## Interactive runtime flow
 
-The single biggest file. Contains:
+When the user launches `kob` or `kob chat`, control passes into `runRepl(version)` in `src/repl.ts`.
 
-- `MODES` — `Ask | Plan | Code` config table.
-- `SLASH_COMMANDS` — list rendered in the `/` autocomplete popup.
-- Helper functions: `formatNum`, `formatDuration`, `formatV2Model`, `modelSupportsVision`, `isImagePath`, `kobImagesDir`, `attachImagePath`, `pasteImageFromClipboard`, `parseFileChanges`, `parseShellCommands`, `runShellCommand`, `readVersion`, etc.
-- Components: `BrandHeader`, `WelcomeHero`, `ConversationView`, `ConversationPanel`, `ResponseBox`, `CommandResultBox`, `InputBox`, `GeneratingPanel`, `BottomBar`.
-- Top-level: `CodeEngine` (state + handlers) and `runCodeTui` (mounts the Ink tree).
-- See [[02-source-map]] and [[04-tui-layout]] for the full breakdown.
+That loop performs the following steps:
 
-### `src/utils/`
+1. load env values into `process.env`
+2. ensure configuration exists, optionally opening the config editor
+3. create initial engine state from config and persisted history
+4. show banner and optionally replay recent exchanges
+5. repeatedly:
+   - gather git status for the header
+   - prompt for input
+   - route shell input, slash commands, or a normal agent turn
+   - update local undo and search state
+   - persist engine state through the core layer
 
-| File | Purpose |
-|------|---------|
-| `api.ts` | `KobApiClient` — `get`, `post`, `chatStream` (async generator of `ChatCompletionChunk`) |
-| `config.ts` | `getConfig()` — reads `.env.local` / `.env` via `process.env` (Bun auto-loads), returns `CliConfig` |
-| `env-file.ts` | `readEnvFile()`, `writeEnvFile(updates, comments?)` — preserves comments, key order, creates from `.env.example` if missing |
-| `format.ts` | `formatDate`, `formatProjects`, `formatRules`, `formatCreditHistory`, `formatUsage` |
-| `errors.ts` | `ApiError` class, `handleApiError`, `validateRequired` |
+## Core engine responsibilities
 
-### `src/types/index.ts`
+`src/core/engine.ts` is the heart of the agentic behavior.
 
-Single barrel of every TypeScript interface (`CliConfig`, `ModelsResponse`, `ProviderModels`, `AIModel`, `ChatResponse`, `Project`, `Rule`, `CreditHistory`, …).
+It is responsible for:
 
-### `src/scripts/release.ts`
+- constructing the message list sent to the model
+- selecting mode-specific system prompts
+- injecting the project file tree for grounded context
+- streaming assistant output from the API
+- parsing model-emitted tool calls and shell blocks
+- performing file reads, file writes, string replacements, and command execution
+- collecting an `Exchange` record for history and UI replay
+- saving the trimmed session back to disk
 
-Stand-alone script invoked by `npm run publish`:
-1. reads `package.json`
-2. bumps `version` (patch)
-3. writes it back
-4. runs `bun run build`
-5. runs `npm publish --ignore-scripts`
+The engine does not do user prompting directly. It reports progress through hooks supplied by the REPL.
 
-## State in TUI mode
+## Separation of concerns
 
-There is no global state library. Everything lives in `CodeEngine` (a single React component using `useState` + `useRef`):
+### `src/repl.ts`
+Owns interactive behavior, prompt flow, slash commands, command approval UX, and presentation of progress.
 
-| State | Type | Purpose |
-|-------|------|---------|
-| `exchanges` | `Exchange[]` | history of rounds (input, output, files, commands, model, tokens) |
-| `phase` | `'input' \| 'generating'` | drives GeneratingPanel vs InputBox |
-| `startMs` / `now` | `number` | tick the elapsed time in the header |
-| `mode` | `'ask' \| 'plan' \| 'code'` | drives system prompt + Tab cycle |
-| `model` | `string` | current `provider/modelId` |
-| `scrollOffset` | `number` | line offset for conversation scroll |
-| `palette` | `null \| 'models'` | shows `ModelPicker` |
-| `configOpen` | `boolean` | shows `ConfigForm` |
-| `banner` | `string \| null` | ephemeral notification under the header |
-| `messagesRef` | `useRef<Message[]>` | full conversation history (multi-turn) |
-| `exchangesLenRef` | `useRef<number>` | detects new rounds → auto-scroll to bottom |
-| `configRef` | `useRef<CliConfig>` | mutable snapshot the streaming handler reads |
+### `src/core/*`
+Owns configuration, mode definitions, session persistence, API access, and turn execution.
 
-## Extending the system
+### `src/tools/*`
+Owns low-level operations on files, shell commands, parsing, clipboard, and git metadata.
 
-- **Add a new slash command** → edit `SLASH_COMMANDS` + `handleSlashCommand` in `[[code-tui]]`. See [[07-slash-system]].
-- **Add a new mode** → extend the `Mode` type, the `MODES` array, and `MODES.systemPrompt`/placeholder.
-- **Add a new overlay** (like `ModelPicker` / `ConfigForm`) → create `src/ui/<name>.tsx`, add a boolean state in `CodeEngine`, mount it conditionally below the conversation, and gate `InputBox`'s `isActive` so its keystrokes don't leak.
-- **Add a new env key** → extend `CliConfig` in `[[types]]`, surface it in `getConfig()` and `[[ConfigForm]]`.
+### `src/ui/*`
+Owns user-facing rendering and prompt helpers such as banners, markdown output, spinners, confirmation prompts, and status displays.
+
+## Mutation model
+
+Only modes whose `ModeInfo.canMutate` is true may apply file edits or execute shell commands from model output. In practice this is the `code` mode.
+
+Mutation sources supported by the engine:
+
+- explicit XML-like tool tags such as `<tool:read_file>` and `<tool:str_replace>`
+- fenced file blocks whose header includes a path
+- fenced shell blocks or `$ ...` lines inside assistant output
+
+The engine gathers the results of all executed actions and feeds those results back into the model as synthetic user messages when multi-round tool usage is needed.
+
+## Safety boundaries
+
+The runtime enforces several important boundaries:
+
+- file paths are normalized and checked to remain inside the working directory
+- string replacement requires the `old_str` match to be unique
+- dangerous commands are classified separately from readonly commands
+- readonly commands may be auto-approved based on configuration
+- user approval can be requested for mutating or dangerous commands during a turn
+- history persistence failure is treated as non-fatal
+
+## Session model
+
+The application persists a trimmed transcript per project directory.
+
+Effects of this design:
+
+- reopening the same repo resumes recent work automatically
+- different repos do not share the same stored transcript
+- context files remain small because the engine trims history before saving
+
+## Legacy architecture note
+
+Older documentation refers to an Ink full-screen TUI and `src/ui/code-tui.tsx` as the central runtime. That is no longer the primary architecture. The shipped interactive path is `src/repl.ts` plus `src/core/engine.ts`.
+
+See [[17-legacy-and-migration-notes]] for the distinction.

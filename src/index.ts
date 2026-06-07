@@ -1,47 +1,93 @@
 #!/usr/bin/env bun
+// ════════════════════════════════════════════════════════════
+//  KOB CLI v2 — entry point
+//  Made in Thailand · www.kob-ai.dev
+// ════════════════════════════════════════════════════════════
 
 import { Command } from 'commander';
-import { readFileSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
-import { authVerifyCommand, balanceCommand } from './commands/auth.js';
-import { modelsCommand } from './commands/models.js';
-import { chatCommand, chatInteractiveCommand } from './commands/chat.js';
-import { streamCommand } from './commands/stream.js';
-import { askCommand } from './commands/ask.js';
-import { codeCommand } from './commands/code.js';
-import { skillsCommand } from './commands/skills.js';
-import { runCodeTui } from './ui/code-tui.js';
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { dirname, join } from 'node:path';
+import { runRepl } from './repl.js';
+import { loadEnv, getConfig } from './core/config.js';
+import { KobApiClient } from './core/api.js';
+import { handleSubmit, createInitialState, formatModel } from './core/engine.js';
+import { editConfig } from './ui/prompts.js';
+import { renderMarkdown } from './ui/markdown.js';
+import { errorBox, banner } from './ui/render.js';
+import { C } from './ui/theme.js';
+import chalk from 'chalk';
 
-// Read version from package.json so it stays in sync with releases
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const pkg = JSON.parse(
-  readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')
-);
-const VERSION: string = pkg.version;
-
-const program = new Command();
-
-program
-  .name('kob')
-  .description('KOB CLI - Command-line interface for Kob AI')
-  .version(VERSION);
-
-program.addCommand(authVerifyCommand);
-program.addCommand(balanceCommand);
-program.addCommand(chatCommand);
-program.addCommand(chatInteractiveCommand);
-program.addCommand(streamCommand);
-program.addCommand(askCommand);
-program.addCommand(codeCommand);
-program.addCommand(skillsCommand);
-program.addCommand(modelsCommand);
-
-// Launch the Code TUI when no subcommand is given — `kob` becomes the entry point
-if (process.argv.length <= 2) {
-  await runCodeTui();
-  process.exit(0);
+function readVersion(): string {
+    try {
+        const dir = dirname(fileURLToPath(import.meta.url));
+        for (const p of [join(dir, '..', 'package.json'), join(dir, 'package.json'), join(process.cwd(), 'package.json')]) {
+            try { const v = JSON.parse(readFileSync(p, 'utf-8')).version; if (v) return v; } catch { /* next */ }
+        }
+    } catch { /* */ }
+    return '2.0.0';
 }
 
-program.parse(process.argv);
+const VERSION = readVersion();
+
+process.on('uncaughtException', (e) => { console.error('\n  fatal:', e.message); process.exit(1); });
+process.on('unhandledRejection', (e: any) => { console.error('\n  fatal:', e?.message || String(e)); process.exit(1); });
+
+const program = new Command();
+program
+    .name('kob')
+    .description('KOB CLI v2 — a beautiful, fully agentic AI coding assistant. Made in Thailand.')
+    .version(VERSION, '-v, --version', 'show version');
+
+program
+    .command('models')
+    .description('List available AI models')
+    .action(async () => {
+        loadEnv();
+        const cfg = getConfig();
+        if (!cfg) process.exit(1);
+        try {
+            const models = await new KobApiClient(cfg).listModels();
+            console.log('');
+            console.log('  ' + chalk.bold(`${models.length} models available`));
+            for (const m of models) {
+                const price = m.inputPricePer1M != null ? chalk.dim(`  $${m.inputPricePer1M}/$${m.outputPricePer1M ?? '?'} per 1M`) : '';
+                console.log('    ' + chalk.hex(C.green)(m.id) + (m.display_name || m.displayName ? chalk.dim('  ' + (m.display_name || m.displayName)) : '') + price);
+            }
+            console.log('');
+        } catch (e) { errorBox((e as Error).message); process.exit(1); }
+    });
+
+program
+    .command('ask <prompt...>')
+    .description('Ask a one-off question (non-interactive)')
+    .option('-m, --model <model>', 'model id')
+    .action(async (promptParts: string[], opts: { model?: string }) => {
+        loadEnv();
+        const cfg = getConfig();
+        if (!cfg) process.exit(1);
+        const state = createInitialState(cfg);
+        state.mode = 'ask';
+        if (opts.model) state.model = formatModel(opts.model);
+        const res = await handleSubmit(state, promptParts.join(' '), {});
+        if (res.error && res.state === state) { errorBox(res.error); process.exit(1); }
+        const last = res.state.exchanges[res.state.exchanges.length - 1];
+        if (last) console.log('\n' + renderMarkdown(last.output) + '\n');
+    });
+
+program
+    .command('config')
+    .description('Edit configuration (.env.local)')
+    .action(async () => {
+        loadEnv();
+        banner('KOB CLI configuration', C.cyan);
+        await editConfig();
+        banner('Saved', C.green);
+    });
+
+program
+    .command('chat', { isDefault: true })
+    .description('Launch the interactive TUI (default)')
+    .action(async () => { await runRepl(VERSION); });
+
+program.parseAsync(process.argv);

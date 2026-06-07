@@ -1,39 +1,13 @@
-# Dependencies
 node_modules/
-
-# Build output
-kob-cli
-kob-cli.exe
-kob-cli@*
-bun
-npm
 dist/
-build/
+*.tsbuildinfo
 
-# Environment files (contains API keys)
+# local secrets
 .env
 .env.local
-.env.*.local
-.env.*
 
-# npm token (contains secret)
-.npmrc
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# Bun lockfile
-bun.lock
+# sandbox / scratch test artifacts
+*.mjs
+.fuse_hidden*
+kob
+kob.exe

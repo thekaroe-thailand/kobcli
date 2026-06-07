@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync } from 'fs';
 import { execSync } from 'child_process';
 import { resolve } from 'path';
 
+// @ts-expect-error import.meta.dir is Bun-specific
 const root = resolve(import.meta.dir, '../..');
 const pkgPath = resolve(root, 'package.json');
 const pkg = JSON.parse(readFileSync(pkgPath, 'utf-8'));

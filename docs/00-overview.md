@@ -1,64 +1,131 @@
 ---
-title: "00 — Overview"
+title: "00 - Overview"
 type: overview
 status: active
 created: 2026-06-05
-updated: 2026-06-05
+updated: 2026-06-07
 tags:
   - kob-cli
   - overview
 ---
 
-# 00 — Overview
+# 00 - Overview
 
-## What is KOB CLI?
+## What KOB CLI is
 
-`kob-cli` is an **AI coding agent for the terminal**. The same package ships:
+`kob-cli` is an AI coding assistant for the terminal. It combines a small command-line surface with a rich interactive REPL that can ask questions, plan work, write files, run commands, and keep project-local conversational context between sessions.
 
-1. A **classic CLI** with subcommands (`auth`, `chat`, `stream`, `models`, …) for scripting and CI.
-2. A **full-screen TUI** that is the default when you run `kob` with no arguments — a btop-styled chat workspace with a brand header, conversation panel, mode selector, and bottom key-bindings bar.
+At its best, the product feels like a disciplined pair programmer inside the terminal:
 
-It talks to a single backend, the **KOB AI** API (`https://www.kob-ai.dev`), over an OpenAI-compatible `/api/v2/chat/completions` endpoint, and can stream responses.
+- it understands the current working directory
+- it can inspect project files before editing
+- it can emit explicit tool syntax that the engine executes
+- it can show diffs, undo the last set of file changes, and expose shell output directly
+- it keeps the user in control for mutating or dangerous commands
 
-## Who is it for?
+## Current product surface
 
-Developers who want a fast, keyboard-only, terminal-native AI assistant that:
+The runtime exposed today is defined by `src/index.ts` and `src/repl.ts`.
 
-- **just works** — `npm i -g kob-cli && kob` drops you straight into a chat.
-- **respects the terminal** — btop-style panels, TUI conventions, no Electron, no browser.
-- **runs the code for you** — in `code` mode, model-written shell commands are executed automatically so you can stay in the loop without copy-pasting into another window.
-- **stays in flow** — `Tab` cycles Ask/Plan/Code, `/` opens a slash-command palette, model picker is a keystroke away.
+### CLI commands
+- `kob` or `kob chat` starts the interactive session
+- `kob ask <prompt...>` performs a one-shot request without entering the REPL
+- `kob models` lists models from the backend catalog
+- `kob config` edits local configuration
 
-## Feature highlights
+### Interactive slash commands
+Inside the REPL the user can switch modes and operate on the local project with:
 
-- **TUI by default** — `kob` alone opens the btop-styled workspace. See [[04-tui-layout]].
-- **Three modes** — `Ask` (questions only) · `Plan` (design before code) · `Code` (write + auto-execute). Tab to cycle, `1/2/3` to jump.
-- **Slash commands** — `/ask`, `/plan`, `/code`, `/clear`, `/reset`, `/models`, `/config`, `/help`, `/exit`. Type `/` to see them all. See [[07-slash-system]].
-- **Model picker** — `/models` opens a searchable list of every model in the catalog; current model is marked. See [[09-models-picker]].
-- **Image paste** — `Ctrl+V` pastes an image from the OS clipboard (Windows/macOS/Linux), or paste a file path with text. The badge `👁 vision` / `◌ text-only` tells you whether the active model can actually read it. See [[06-images-vision]].
-- **Auto-run shell commands** — in `code` mode, fenced `bash` / `sh` / `shell` blocks in the model's response are executed via `execSync` (60-second timeout, first 8 output lines captured).
-- **128k context** — `max_tokens: 16384` and a 131072 visual ceiling in the session stats.
-- **Multi-turn** — every round is appended to an in-memory `messagesRef`; you can build up a long debugging session without losing context.
-- **Built-in `/config`** — edit `BASE_URL`, `API_KEY`, `MODEL_ID` and write them to `.env.local` without leaving the TUI. See [[08-config-and-env]].
-- **Live scroll** — long conversations auto-scroll to bottom; `PgUp` / `PgDn` / `g` / `G` for manual navigation. See [[05-conversation-scrolling]].
-- **Native binary** — `bun build --compile` produces a self-contained `kob-cli.exe` for distribution.
+- `/chat`, `/ask`, `/plan`, `/code`
+- `/help`, `/models`, `/config`
+- `/clear`, `/newchat`, `/reset`, `/exit`, `/quit`
+- `/git`, `/diff`, `/undo`, `/tokens`, `/init`
+- `/find`, `/replace`
 
-## Philosophy
+### Direct shell commands
+Input beginning with `$ ` or `> ` is executed immediately in the current working directory and reported back in the console.
 
-- **Terminal first.** Every interaction has a keyboard binding; no mouse required.
-- **No magic, no framework tax.** A handful of well-named Ink components, no global state library.
-- **One source of truth for the model id, key, and URL.** `.env.local` (or `.env`) — read at startup by `[[config]]` and re-read by `/config` and `/reset`.
-- **Visible feedback.** The brand header always shows model, vision capability, context usage, and status. See [[04-tui-layout]].
-- **Thailand-built.** This project deliberately highlights its origin (see brand identity in the [[README]]).
+## Modes
 
-## Non-goals
+KOB CLI uses four modes at runtime, though the public product story often emphasizes Ask, Plan, and Code:
 
-- **No background daemon, no remote server.** `kob-cli` is a CLI; it exits when you exit.
-- **No proprietary local state.** History is in-memory; use `/clear` to forget.
-- **No images sent over the wire yet.** Pasted images are saved to `~/.kob-cli/images/` and their **paths** are appended to the user message — the API client does not yet send multimodal content. See [[12-known-limitations]].
+- `chat` - conversational mode with no mutation
+- `ask` - one-off or interactive question answering, still non-mutating
+- `plan` - design and reasoning without file changes
+- `code` - code-focused mode that may write files, apply string replacements, and run shell commands
 
-## See also
+Mode affects the system prompt, status messages, and whether tool-driven mutations are allowed.
 
-- [[01-architecture]] — how the pieces fit together
-- [[02-source-map]] — file-by-file tour
-- [[04-tui-layout]] — the TUI itself
+## What makes the current version strong
+
+This version is notably more capable than a plain chat client because the runtime has real execution structure:
+
+- the engine appends the project file tree into the system prompt for grounded context
+- the model can request `read_file`, `str_replace`, and `write_file` tool calls
+- fenced shell blocks can become executable commands in code mode
+- the REPL surfaces each read, file mutation, replacement, and command run as visible progress
+- session history is persisted per working directory, so work resumes naturally when reopening the same project
+
+## Backend contract
+
+The application talks to KOB AI over HTTP using the `KobApiClient` in `src/core/api.ts`.
+
+Expected backend capabilities include:
+
+- model listing
+- streaming chat completions
+- support for model IDs in `provider/model` form
+- bearer authentication through `KOB_API_KEY`
+
+The default base URL is `https://www.kob-ai.dev`, with version suffixes stripped automatically by configuration loading.
+
+## Configuration model
+
+Configuration is read from environment variables, primarily through `.env.local` or `.env`.
+
+Important keys:
+
+- `KOB_API_KEY`
+- `KOB_API_BASE_URL`
+- `KOB_MODEL_ID`
+- `KOB_MAX_TOKENS`
+- `KOB_AUTO_APPROVE_READONLY`
+
+The user can manage these values interactively through `kob config` or `/config`.
+
+## Persistence model
+
+KOB CLI stores session data under the user's home directory in `.kob-cli/sessions/`.
+
+Persistence is scoped by working directory hash, which means:
+
+- each project gets its own session file
+- reopening the CLI in the same project resumes context
+- `/clear` and `/reset` clear the stored transcript for that project
+
+## Design philosophy
+
+The codebase favors a few clear ideas:
+
+- terminal-first interaction over complex UI abstraction
+- explicit tool execution instead of hidden side effects
+- readable TypeScript modules with direct responsibilities
+- project-scoped safety boundaries for file operations
+- visible command approval for risky actions
+
+## Non-goals and boundaries
+
+The current runtime intentionally does not try to be everything:
+
+- it is not a background daemon or editor plugin
+- it does not maintain a global cross-project memory store
+- it does not execute arbitrary file writes outside the project root
+- it treats dangerous shell commands as a special approval class
+- it keeps the public CLI small and pushes richer workflows into the REPL
+
+## Read next
+
+- [[01-architecture]] for the system design
+- [[02-source-map]] for where the code lives
+- [[13-repl-runtime]] for the interactive runtime
+- [[14-engine-and-tool-execution]] for the mutation pipeline

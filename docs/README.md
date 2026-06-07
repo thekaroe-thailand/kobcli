@@ -4,76 +4,89 @@ type: moc
 status: active
 audience: ai-assistants
 created: 2026-06-05
-updated: 2026-06-05
+updated: 2026-06-07
 tags:
   - kob-cli
   - documentation
   - moc
 ---
 
-# KOB CLI — Documentation Hub
+# KOB CLI - Documentation Hub
 
-> Complete project knowledge base. This `docs/` folder is the **single source of truth** for AI assistants working on the codebase. Read [[00-overview]] first, then follow the chain below.
+> Current documentation for the modern KOB CLI v2 runtime. This folder documents the code that actually ships today: a Commander-based CLI plus a project-scoped interactive REPL backed by the KOB AI API.
 
-## What is this project?
+## Read this first
 
-`kob-cli` is a terminal-native AI coding agent built with **Bun + TypeScript + Ink (React for TUI)**. It is published to npm as `kob-cli` and ships with a polished, btop-inspired TUI mode that runs by default when no subcommand is given.
+Start here if you need accurate project context before making code changes:
 
-- npm: `kob-cli@1.0.6` (or whatever the current `package.json` says)
-- repo: `https://github.com/thekaroe-thailand/kobcli`
-- runtime: Bun (TypeScript executed directly) or compiled native `kob-cli.exe`
+1. [[00-overview]] - product purpose, capabilities, and operating model
+2. [[01-architecture]] - runtime architecture and data flow
+3. [[02-source-map]] - file-by-file map of the repository
+4. [[03-cli-commands]] - public command surface exposed by `src/index.ts`
+5. [[13-repl-runtime]] - how the interactive loop works
+6. [[14-engine-and-tool-execution]] - agent turn execution, tool parsing, approvals, and persistence
+7. [[15-tools-layer]] - file, shell, parser, clipboard, and git helpers
+8. [[16-history-and-sessions]] - session persistence and reset semantics
+9. [[17-legacy-and-migration-notes]] - what is legacy, historical, or partially superseded
 
-## Map of Content (MOC)
+## What this project is now
 
-### Foundations
-- [[00-overview]] — purpose, features, philosophy
-- [[01-architecture]] — high-level architecture, runtime stack, data flow
-- [[02-source-map]] — file-by-file walkthrough of `src/`
+`kob-cli` is a terminal-native AI coding assistant written in TypeScript and intended to run under Bun in development and as a compiled binary in distribution.
 
-### CLI surface
-- [[03-cli-commands]] — commander.js subcommands (`auth`, `chat`, `stream`, `models`, `projects`, `rules`, `credits`)
+The current product surface is intentionally compact:
 
-### TUI mode (the default)
-- [[04-tui-layout]] — header, conversation, input, overlays
-- [[05-conversation-scrolling]] — line-based scroll engine
-- [[06-images-vision]] — image paste (Ctrl+V), vision detection
-- [[07-slash-system]] — `/ask`, `/models`, `/config`, autocomplete popup
-- [[08-config-and-env]] — `/config` form, `.env.local` read/write
-- [[09-models-picker]] — `/models` palette, search, picking
+- `kob` or `kob chat` starts the interactive REPL
+- `kob ask <prompt...>` sends a one-off prompt
+- `kob models` lists available models from the API
+- `kob config` edits `.env.local`
+- the REPL itself supports mode switching, slash commands, direct shell execution, search/replace helpers, undo, diff, and session resume
 
-### Build, release, operations
-- [[10-build-and-release]] — `bun build --compile`, `npm run publish`, version bumping
-- [[11-conventions]] — coding style, naming, gotchas
-- [[12-known-limitations]] — unimplemented features, intentional shortcuts
+This is not the same architecture described by some older docs in this folder that refer to an Ink full-screen TUI. The shipped runtime is centered on `src/repl.ts` and `src/core/engine.ts`.
 
-## Quick reference for AI agents
+## Documentation map
 
-**If you are asked to add a slash command:**
-1. Add it to `SLASH_COMMANDS` in `[[code-tui]]` (it appears in autocomplete).
-2. Add a case in `handleSlashCommand` in `[[code-tui]]` to route it.
-3. If it needs an overlay (like `/models` and `/config`), add state + a component in `src/ui/`.
+### Core product docs
+- [[00-overview]] - high-level product story and feature set
+- [[01-architecture]] - module boundaries, runtime flow, and control paths
+- [[02-source-map]] - practical source navigation map
+- [[03-cli-commands]] - exact commands and flags exposed by the entry point
 
-**If you are asked to change the layout:**
-- `[[BrandHeader]]` is 3 rows: identity · model info · session stats.
-- `[[ConversationPanel]]` is the only main panel; it uses line-based slicing.
-- Overlays (`[[ModelPicker]]`, `[[ConfigForm]]`) mount below the conversation.
+### Runtime internals
+- [[13-repl-runtime]] - interactive loop, slash command handling, and turn orchestration
+- [[14-engine-and-tool-execution]] - model interaction and tool execution lifecycle
+- [[15-tools-layer]] - safety model and helper modules
+- [[16-history-and-sessions]] - persistence model and limits
 
-**If you are asked to change streaming:**
-- `[[KobApiClient.chatStream]]` in `[[api]]` returns an `AsyncGenerator<ChatCompletionChunk>`.
-- It currently sends OpenAI-compatible text-only messages (`content: string`), so attached images are encoded as path hints in the user message — see [[12-known-limitations]].
+### Supporting and historical docs
+- [[08-config-and-env]] - environment file editing concepts
+- [[10-build-and-release]] - build and release notes
+- [[11-conventions]] - coding conventions
+- [[12-known-limitations]] - current limitations and trade-offs
+- [[17-legacy-and-migration-notes]] - how to interpret older documents in this folder
 
-**If you are asked to ship:**
-1. `bunx tsc --noEmit` (must pass)
-2. `npm run build` → produces `kob-cli.exe`
-3. `npm run publish` → bumps version, builds, publishes
+## Recommended reading by task
 
-## Brand identity (do not change without asking)
+**Need to change the command surface?**
+Read [[03-cli-commands]] and [[02-source-map]], then edit `src/index.ts`.
 
-- Name: **KOB CLI**
-- Origin: Thailand 🇹🇭 (red ▰▰ · white ▰ · blue ▰▰)
-- Founded by: **Tavon Seesenpila** (founder of Kob AI)
-- Tone: confident, modern, terminal-native
+**Need to change how the interactive assistant behaves?**
+Read [[13-repl-runtime]] and [[14-engine-and-tool-execution]], then inspect `src/repl.ts`, `src/core/engine.ts`, and `src/core/modes.ts`.
 
-## Last updated
+**Need to modify file writes or shell execution?**
+Read [[15-tools-layer]], then inspect `src/tools/files.ts`, `src/tools/parser.ts`, and `src/tools/shell.ts`.
 
-This MOC was last regenerated on **2026-06-05**. All files use Obsidian-flavored markdown (frontmatter, `[[wiki-links]]`, `#tags`).
+**Need to understand why a previous conversation was resumed?**
+Read [[16-history-and-sessions]] and inspect `src/core/history.ts`.
+
+## Project identity
+
+- Name: KOB CLI
+- Version line: v2.x
+- Runtime goal: beautiful, agentic, terminal-first coding assistant
+- API host default: `https://www.kob-ai.dev`
+- Origin: built in Thailand
+
+## Notes on accuracy
+
+- Pages `00-03` and `13-17` are aligned to the current codebase as of 2026-06-07.
+- Several older pages in `docs/` were written for an earlier UI architecture. Treat them as useful historical context unless they explicitly match the current files under `src/`.

@@ -1,99 +1,106 @@
 ---
-title: "02 — Source Map"
+title: "02 - Source Map"
 type: reference
 status: active
 created: 2026-06-05
-updated: 2026-06-05
+updated: 2026-06-07
 tags:
   - kob-cli
   - source-map
   - reference
 ---
 
-# 02 — Source Map
+# 02 - Source Map
 
-A file-by-file walkthrough of the project. Use this when you need to find the right place to make a change.
+A practical map of the repository based on the code that currently matters.
 
 ## Root files
 
 | File | Purpose |
 |------|---------|
-| `package.json` | name `kob-cli`, scripts (`dev`, `build`, `publish`, `release:*`), `bin: kob → bin/cli.cjs`, `files` (tarball whitelist) |
-| `tsconfig.json` | strict TypeScript, ESM, JSX (`react-jsx`) |
-| `bin/cli.cjs` | CJS shim that `spawn`s `bun src/index.ts`; tells the user to install Bun if it's missing |
-| `index.ts` | leftover Bun scaffold ("Hello via Bun!") — **not** the entry. The real entry is `src/index.ts`. Safe to delete. |
-| `json` | stray file in the project root (499 bytes) — leftover from a test. Safe to delete. |
-| `.env.example` | template copied to `.env.local` on first write by `[[env-file]]` |
-| `LICENSE`, `AGENTS.md`, `INSTALL.md`, `MANUAL.md`, `QUICKSTART.md`, `README.md`, `SPECTS.md` | shipped with the tarball (see `files` in `package.json`) |
+| `package.json` | package metadata, scripts, bin mapping, version |
+| `tsconfig.json` | TypeScript compilation settings |
+| `README.md`, `QUICKSTART.md`, `INSTALL.md`, `MANUAL.md`, `PROJECT.md`, `SPECTS.md` | top-level product and project documents |
+| `AGENTS.md` | workspace guidance for coding agents |
+| `kob-cli.exe`, `kob.bat`, `bin/cli.cjs` | launch and distribution artifacts |
+| `index.ts` | non-authoritative root file, not the main runtime entry |
+| `docs/` | internal project documentation |
 
-## `src/index.ts`
+## Entry and interactive runtime
 
-The actual entry. Reads its own `package.json` for the dynamic `version`, registers every subcommand, and falls through to `runCodeTui()` (the TUI) if no subcommand is given.
+| Path | Role |
+|------|------|
+| `src/index.ts` | real CLI entry point and command registration |
+| `src/repl.ts` | interactive REPL loop and slash command dispatcher |
 
-**Important paths inside this file:**
-- `const pkg = JSON.parse(readFileSync(join(__dirname, '..', '..', 'package.json'), 'utf-8'));`
-- `const VERSION: string = pkg.version;` (used by `readVersion()` re-imported into `[[code-tui]]`)
+## Core runtime
 
-## `src/commands/` (one-shot CLI mode)
+| Path | Role |
+|------|------|
+| `src/core/api.ts` | HTTP client for models and chat completions |
+| `src/core/config.ts` | environment loading and config assembly |
+| `src/core/engine.ts` | turn execution, tool orchestration, exchange creation |
+| `src/core/env-file.ts` | `.env.local` / `.env` read-write helpers |
+| `src/core/history.ts` | cwd-scoped session persistence |
+| `src/core/modes.ts` | mode definitions and system prompts |
+| `src/core/types.ts` | shared runtime types |
 
-| File | Subcommand | Notes |
-|------|-----------|-------|
-| `auth.ts` | `auth:verify` | checks API key against `/api/auth/verify` |
-| `chat.ts` | `chat` | single non-streaming chat (uses `KobApiClient.post`) |
-| `stream.ts` | `stream` | streaming chat (uses `KobApiClient.chatStream`) |
-| `models.ts` | `models` | lists models from `/api/models` with `--provider` and `--format` flags |
-| `code.ts` | (extra) | alternative code-mode CLI flow |
-| `ask.ts` | (extra) | alternative ask-mode CLI flow |
-| `skills.ts` | (extra) | skill/preset management |
+## Tooling layer
 
-These are useful as a fallback when the TUI is unavailable (e.g. piping into `jq`).
+| Path | Role |
+|------|------|
+| `src/tools/files.ts` | safe reads, writes, search, replace, undo restore, file tree generation |
+| `src/tools/shell.ts` | command classification and synchronous shell execution |
+| `src/tools/parser.ts` | parse tool tags, file blocks, shell blocks, and slash args |
+| `src/tools/git.ts` | lightweight repo awareness for the status bar |
+| `src/tools/clipboard.ts` | copy the last answer to the clipboard |
+| `src/tools/diff.ts` | diff helpers used by rendering |
 
-## `src/utils/`
+## UI and presentation
 
-| File | Public API | Notes |
-|------|-----------|-------|
-| `api.ts` | `KobApiClient`, `ChatCompletionChunk`, `ChatCompletionResult` | `get`, `post`, `chatStream` |
-| `config.ts` | `getConfig()` | reads `process.env` (Bun auto-loads `.env.local` / `.env`) |
-| `env-file.ts` | `getEnvPath()`, `readEnvFile()`, `writeEnvFile(updates, comments?)`, `describeEnvPath()` | preserves comments, key order; prefers `.env.local` then `.env`; seeds from `.env.example` |
-| `format.ts` | `formatDate`, `formatProjects`, `formatRules`, `formatCreditHistory`, `formatUsage` | pretty-print helpers for the one-shot CLI |
-| `errors.ts` | `ApiError`, `handleApiError`, `validateRequired` | maps HTTP errors to user-friendly messages |
+| Path | Role |
+|------|------|
+| `src/ui/render.ts` | most console rendering helpers and round output |
+| `src/ui/prompts.ts` | interactive prompts, config editing, command approval, model picking |
+| `src/ui/banner.ts` | welcome and top-level visual identity |
+| `src/ui/spinner.ts` | terminal spinner during active turns |
+| `src/ui/theme.ts` | color constants and terminal helpers |
+| `src/ui/markdown.ts` | markdown-to-terminal rendering |
+| `src/ui/model-picker.tsx` | model picking UI component |
+| `src/ui/config-form.tsx` | config editing UI component |
+| `src/ui/colors.ts`, `src/ui/gradient.ts`, `src/ui/renderer.ts`, `src/ui/tui.ts` | supporting presentation utilities and experiments |
 
-## `src/types/index.ts`
+## Commands and alternate surfaces
 
-Single barrel of every interface. Notable ones:
-- `CliConfig` — `{ baseUrl, apiKey, apiToken?, bearerToken?, modelId }`
-- `ModelsResponse`, `ProviderModels`, `AIModel` — `/api/models` payload
-- `ChatResponse` — non-streaming chat reply
-- `Project`, `Rule`, `CreditHistory` — admin resources
-- `Exchange` lives in `[[code-tui]]` (UI-only)
+| Path | Role |
+|------|------|
+| `src/commands/*.ts` | older or alternate command implementations; not the current authoritative public surface |
+| `src/scripts/release.ts` | release automation |
 
-## `src/ui/` (TUI mode)
+## Transitional and legacy directories
 
-| File | Exports | Notes |
-|------|---------|-------|
-| `code-tui.tsx` | `runCodeTui`, `CodeEngine` (+ all components + helpers) | The big one. ~1700 lines. |
-| `colors.ts` | `c` | shared color tokens — import this, never hardcode hex |
-| `model-picker.tsx` | `ModelPicker` | The `/models` overlay |
-| `config-form.tsx` | `ConfigForm` | The `/config` overlay |
+| Path | Role |
+|------|------|
+| `src/logic/` | parallel or transitional logic modules from a previous architecture iteration |
+| `src/utils/` | older utility layer that overlaps conceptually with `src/core/` |
+| `src/ui-backup/` | backup copies of the earlier UI architecture |
 
-See [[04-tui-layout]] for the per-component breakdown.
+These directories are useful historical context but should not be assumed to define the current runtime without checking imports from `src/index.ts`.
 
-## `src/scripts/release.ts`
+## Where to edit for common tasks
 
-Stand-alone release script — bumped and publishes on `npm run publish`. See [[10-build-and-release]].
+| Task | Primary files |
+|------|---------------|
+| Add or change a public CLI command | `src/index.ts` |
+| Change REPL behavior | `src/repl.ts` |
+| Change mode behavior or system prompts | `src/core/modes.ts`, `src/core/engine.ts` |
+| Change tool call execution | `src/core/engine.ts`, `src/tools/parser.ts` |
+| Change file safety rules or search/replace | `src/tools/files.ts` |
+| Change shell approval logic | `src/tools/shell.ts`, `src/repl.ts` |
+| Change session persistence | `src/core/history.ts` |
+| Change config loading | `src/core/config.ts`, `src/core/env-file.ts` |
+| Change the model picker or config editor UI | `src/ui/prompts.ts`, `src/ui/model-picker.tsx`, `src/ui/config-form.tsx` |
 
-## Quick lookup table
+## Important caution
 
-| I want to… | Open this file |
-|-----------|----------------|
-| Add a subcommand | `src/index.ts` + new `src/commands/<name>.ts` |
-| Change the header / logo | `[[code-tui]]` → `BrandHeader` |
-| Change the conversation panel | `[[code-tui]]` → `ConversationPanel`, `ConversationView`, `ResponseBox` |
-| Add a slash command | `[[code-tui]]` → `SLASH_COMMANDS` + `handleSlashCommand` |
-| Add a new overlay | create `src/ui/<name>.tsx`, mount in `CodeEngine` return |
-| Change streaming behavior | `[[api]]` → `KobApiClient.chatStream` |
-| Change `.env` parsing | `[[env-file]]` |
-| Change `KOB_*` env reading | `[[config]]` |
-| Change the model picker | `[[model-picker]]` |
-| Change the config form | `[[config-form]]` |
-| Bump version & publish | `npm run publish` (no code change) |
+If a document or file name suggests an Ink-based full-screen TUI, confirm whether it is still imported by `src/index.ts` or `src/repl.ts` before editing it. Several such files remain in the repository as history or backups.

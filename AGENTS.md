@@ -14,29 +14,28 @@ This document provides comprehensive specifications for AI agents working on the
 │            (src/index.ts)                    │
 └──────────────┬──────────────────────────────┘
                │
-               │ Commander.js / no-args → TUI
+               │ Commander.js / no-args → REPL
                ▼
 ┌──────────────────────┬──────────────────────┐
-│   Command Layer      │    TUI Layer          │
-│ (src/commands/*.ts)  │  (src/ui/*.tsx)       │
-│ - auth.ts            │  - code-tui.tsx       │
-│ - chat.ts            │  - model-picker.tsx   │
-│ - stream.ts          │  - config-form.tsx    │
-│ - models.ts          │  - colors.ts          │
-│ - ask.ts             │                       │
-│ - code.ts            │                       │
-│ - skills.ts          │                       │
+│   Command Layer      │    REPL Layer         │
+│  (src/index.ts)      │  (src/repl.ts)        │
+│ - ask                │  - slash commands     │
+│ - config             │  - runTurn            │
+│ - models             │  - retry key (R)      │
+│ - chat               │                       │
 └──────────┬───────────┴──────────┬────────────┘
            │                      │
            ▼                      ▼
 ┌─────────────────────────────────────────────┐
-│            Utility Layer                     │
-│  (src/utils/*.ts)                            │
-│  - api.ts (HTTP Client)                      │
-│  - config.ts (Configuration)                 │
-│  - env-file.ts (.env read/write)             │
-│  - format.ts (Output Formatting)             │
-│  - errors.ts (Error Handling)                │
+│            Core Layer                        │
+│  (src/core/*.ts)                            │
+│  - api.ts (HTTP streaming + retry)          │
+│  - engine.ts (multi-round agent loop)       │
+│  - modes.ts (Ask/Plan/Code prompts)         │
+│  - config.ts (env loading)                  │
+│  - env-file.ts (.env read/write)            │
+│  - history.ts (per-project sessions)        │
+│  - types.ts (shared interfaces)             │
 └──────────────┬──────────────────────────────┘
                │
                │ HTTPS
@@ -51,314 +50,249 @@ This document provides comprehensive specifications for AI agents working on the
 
 #### 1. Entry Point (`src/index.ts`)
 - Initialize Commander.js program
-- Register all commands
-- Parse command-line arguments
-- If no subcommand given → call `runCodeTui()` (TUI mode)
+- Register subcommands (`ask`, `config`, `models`, `chat`)
+- Parse CLI arguments
+- If no subcommand given → call `runRepl()` from `./repl.js`
 
-#### 2. Command Layer (`src/commands/`)
+#### 2. REPL Layer (`src/repl.ts`)
+- The interactive loop users spend 99% of their time in
+- `runRepl(state, cfg, …)` — main loop, reads input, dispatches to `runTurn`
+- `runTurn(state, input, cfg, …)` — single agentic turn, returns `{ state, connectionError }`
+- Handles slash commands (`/models`, `/config`, `/git`, `/diff`, `/undo`, `/clear`, …)
+- `TurnIO` class — manages spinner + Esc abort signal + `approveCommand` confirmation
+- `waitForRetryKey()` — listens for a single keypress (`R` = retry) after a connection failure
 
-**auth.ts**
-- `auth:verify` - Verify API credentials
-- `balance` - Check credit balance
+#### 3. Core Layer (`src/core/`)
 
-**chat.ts**
-- `chat` - Single message to AI
-- `chat:interactive` - REPL mode for conversation
-
-**stream.ts**
-- `stream` - Real-time streaming AI responses
-
-**models.ts**
-- `models` - List available AI models
-
-**ask.ts**
-- `ask` - One-shot question answering (streaming)
-
-**code.ts**
-- `code` - AI code generation; launches TUI if no prompt given
-
-**skills.ts**
-- `skills` - List all available CLI skills
-
-#### 3. TUI Layer (`src/ui/`)
-
-**code-tui.tsx**
-- `runCodeTui()` - Launch the full-screen Ink/React TUI
-- `CodeEngine` - Main React component managing all TUI state
-- Handles 3 modes: Ask, Plan, Code
-- Auto-executes shell commands and writes files in Code mode
-
-**model-picker.tsx** - Overlay for selecting AI model from API
-**config-form.tsx** - Overlay for editing .env credentials
-**colors.ts** - Shared color token object (`c.*`)
-
-#### 4. Utility Layer (`src/utils/`)
-
-**api.ts**
-- `KobApiClient` class
-- `chatStream()` - Async generator for SSE streaming
-- `chatComplete()` - Accumulate stream to string
+**api.ts** — `KobApiClient`
+- `chatStream()` — async generator for SSE streaming, **5 retries with exponential backoff + jitter** on transient network errors (DNS, TCP, TLS, fetch abort), **no retry on HTTP 4xx/5xx**, **no retry on user Esc abort**
+- `chatComplete()` — accumulate stream to a single string
+- `post()` / `get()` — JSON HTTP helpers
 - Automatic Bearer token injection
+- Throws `ApiError` with stable `statusCode` (503 for "Connection failed", HTTP status for upstream errors)
 
-**config.ts**
-- `getConfig()` - Read from `process.env` (Bun auto-loads .env)
-- Supports `kob_xxx:token` combined key format
+**engine.ts** — `handleSubmit(state, input, callbacks)` — multi-round agentic loop
+- Reads the conversation history from `state.exchanges`
+- Builds the system prompt for the current mode
+- Calls `chatStream`, parses tool calls from the streamed delta
+- Routes parsed tool calls to `files.ts` / `shell.ts` / `git.ts`
+- Pushes undo entries to the `setUndo` callback for `/undo`
+- Returns `{ state, undo, error? }` — `error` is the user-facing message
 
-**env-file.ts**
-- `readEnvFile()` / `writeEnvFile()` - Read/write .env files directly
-- Preserves comments and key ordering
+**modes.ts** — system prompts + mode-specific nudge text for `Ask`, `Plan`, `Code`
+**config.ts** — `getConfig()` reads `process.env` (Bun auto-loads `.env` / `.env.local`)
+**env-file.ts** — `readEnvFile()` / `writeEnvFile()` for the `kob config` form, comment-preserving
+**history.ts** — per-`cwd` session persistence to `~/.kob-cli/sessions/<hash>.jsonl`
+**types.ts** — all shared TypeScript interfaces
 
-**format.ts**
-- `formatDate()` - Format timestamps
-- `formatUsage()` - Format usage statistics
+#### 4. Tools Layer (`src/tools/`)
 
-**errors.ts**
-- `ApiError` class - Custom error type
-- `handleApiError()` - User-friendly error messages
-- `validateRequired()` - Input validation
+**parser.ts** — extract fenced code blocks and `<tool:…>…</tool:…>` tags from streamed deltas
+**files.ts** — sandboxed `read_file` / `write_file` / `str_replace`; path must be inside `cwd`
+**shell.ts** — `runShellCommand()`, classifies as `readonly` / `mutating` / `dangerous`
+**git.ts** — `gitStatus()`, `gitDiff()`, branch + ahead/behind
+**diff.ts** — LCS line diff + compact unified-diff renderer
+**clipboard.ts** — cross-platform `copyToClipboard()`
 
-#### 5. Type Definitions (`src/types/index.ts`)
-- All TypeScript interfaces
-- API response types (`ModelsResponse`, `ChatResponse`, `StreamEvent`, `UserToken`, etc.)
+#### 5. UI Layer (`src/ui/`)
+
+**banner.ts** — ASCII KOB header + gradient brand colour
+**gradient.ts** — `gradient(colors)(text)` for dependency-free truecolour gradient text
+**markdown.ts** — `tintCode(lang, code)` and `renderMarkdown(text)` to ANSI
+**prompts.ts** — `promptInput()` (history-walking, multi-line safe), `editConfig()`, `confirmCommand()`, `pickSearchableOption()`
+**render.ts** — `errorBox()`, `banner()`, `showResponse()`, `showExchange()`, progress reporters
+**spinner.ts** — single-line spinner that does not collide with the prompt
+**theme.ts** — palette tokens (`C.cyan`, `C.pink`, …) and `visibleLength` / `termWidth` / `wrapVisible` helpers
 
 ## Development Guidelines
 
-### Adding New Commands
+### Adding a new feature
 
-1. **Create Command File**
-```typescript
-// src/commands/mycommand.ts
-import { Command } from 'commander';
-import { KobApiClient } from '../utils/api.js';
-import { getConfig } from '../utils/config.js';
+1. **Find the right layer.**
+   - Pure logic? → `src/core/`
+   - Sandbox + filesystem? → `src/tools/`
+   - Interactive prompt? → `src/ui/prompts.ts`
+   - Output formatting? → `src/ui/render.ts`
 
-export const myCommand = new Command('mycommand')
-  .description('My new command')
-  .action(async () => {
-    // Implementation
-  });
-```
+2. **Use the engine callbacks**, not your own loop. The engine already handles streaming, abort, tool routing, undo, and the spinner.
 
-2. **Register in Entry Point**
-```typescript
-// src/index.ts
-import { myCommand } from './commands/mycommand.js';
-program.addCommand(myCommand);
-```
+3. **Stay sandboxed.** All file paths must be inside `cwd`. All shell commands must classify as `readonly` or pass through `confirmCommand`.
+
+4. **Never hardcode credentials.** Use `getConfig().apiKey` and let `kob config` populate it.
 
 ### API Client Usage
 
 ```typescript
-const config = getConfig();
-const client = new KobApiClient(config);
+import { KobApiClient, getConfig } from './core/index.js';
 
-// POST request
-const data = await client.post<ResponseType>('/api/endpoint', {
-  key: 'value'
-});
+const cfg = getConfig();
+const client = new KobApiClient(cfg);
 
-// Streaming (async generator — yields OpenAI-compatible SSE chunks)
+// JSON POST
+const data = await client.post<ResponseType>('/api/endpoint', body);
+
+// Streaming
 for await (const chunk of client.chatStream(model, messages, options)) {
-  const delta = chunk.choices?.[0]?.delta?.content;
-  if (delta) process.stdout.write(delta);
+    const delta = chunk.choices?.[0]?.delta?.content;
+    if (delta) process.stdout.write(delta);
 }
 
-// Accumulate full response
-const result = await client.chatComplete(model, messages, options);
-// result = { content, model, usage }
+// Accumulated
+const { content, model, usage } = await client.chatComplete(model, messages, options);
 ```
 
 ### Error Handling Pattern
 
 ```typescript
+import { ApiError, handleApiError } from './core/api.js';
+
 try {
-  const spinner = ora('Loading...').start();
-  
-  // API call
-  const data = await client.post('/api/endpoint', body);
-  
-  spinner.succeed('Success!');
-  console.log(data);
-} catch (error) {
-  spinner.fail('Failed');
-  handleApiError(error);
+    const spinner = ora('Loading…').start();
+    const data = await client.post<MyResponse>('/api/endpoint', body);
+    spinner.succeed('Done');
+    console.log(data);
+} catch (err) {
+    spinner.fail('Failed');
+    handleApiError(err);
 }
 ```
 
-### Type Safety
-
-Always use TypeScript types:
-```typescript
-import type { ChatResponse } from '../types/index.js';
-
-const data = await client.post<ChatResponse>('/api/ai/chat', body);
-// data is properly typed
-```
+For the REPL: return the error from `runTurn` and let `runRepl` print the retry hint. Don't crash the loop.
 
 ## Testing Strategy
 
-### Manual Testing Checklist
-
-1. **Authentication**
-   - [ ] `auth:verify` with valid credentials
-   - [ ] `auth:verify` with invalid credentials
-   - [ ] `balance` command
-
-2. **Ask**
-   - [ ] `ask` with different providers and models
-
-3. **Chat**
-   - [ ] `chat` with different providers
-   - [ ] `chat:interactive` mode
-
-4. **Code**
-   - [ ] `code "..."` generates and writes files
-   - [ ] `code` (no args) launches TUI
-
-5. **Streaming**
-   - [ ] `stream` with different models
-   - [ ] Stream error handling
-
-6. **Models**
-   - [ ] `models` list all
-   - [ ] `models --provider` filter
-   - [ ] `models --format json`
-
-7. **TUI**
-   - [ ] Launch with `kob` (no args)
-   - [ ] Switch modes (Ask / Plan / Code)
-   - [ ] `/models` overlay
-   - [ ] `/config` overlay
-   - [ ] `/clear` resets history
-
-### Common Test Scenarios
+### Manual testing checklist
 
 ```bash
-# Test authentication
-bun dev auth:verify
+# 1. typecheck — must be clean before opening a PR
+bun run typecheck
 
-# Test ask
-bun dev ask "What is TypeScript?"
+# 2. non-interactive smoke
+bun run src/index.ts --version     # prints e.g. 2.0.4
+bun run src/index.ts ask "hello"   # should hit the API
 
-# Test chat
-bun dev chat "Hello" --provider DeepSeek --model deepseek-chat
-
-# Test streaming
-bun dev stream "Tell me a story" --model deepseek-chat
-
-# Test code generation
-bun dev code "Write a hello world in Go" --lang go
-
-# Launch TUI
-kob
+# 3. interactive REPL
+bun run dev                        # spawns the TUI
 ```
+
+Inside the REPL:
+
+1. **Auth** — `kob config`, paste a real `kob_xxx:token`, exit
+2. **Modes** — `Tab` cycles Ask / Plan / Code
+3. **Slash** — `/models`, `/config`, `/git`, `/diff`, `/undo`, `/clear`, `/help`, `/exit`
+4. **Streaming** — type a long request, press `Esc` mid-stream (must abort cleanly)
+5. **Connection retry** — temporarily point `KOB_API_BASE_URL` to an invalid host, run `ask "hi"`, press `R` after the error
+6. **Undo** — ask the model to write a file, then `/undo` (file must be reverted)
+7. **Dangerous command** — ask the model to run `rm -rf tmp-test/`, confirm the red banner
 
 ## Best Practices
 
 ### Code Style
 
-1. **Use async/await** - Not promises or callbacks
-2. **Type everything** - No `any` types unless necessary
-3. **Error handling** - Always use try/catch with handleApiError
-4. **User feedback** - Use ora spinners for loading states
-5. **Output formatting** - Use chalk for colors, format functions for consistency
+1. **async/await** — no `.then` chains
+2. **Type everything** — no `any` unless wrapping a third-party untyped API
+3. **Error handling** — catch and route through `handleApiError` or return a friendly string from `runTurn`
+4. **User feedback** — `Spinner` for loading, `errorBox` for errors, `banner` for soft warnings
+5. **Output formatting** — `chalk.hex(C.…)` for colour, `theme.ts` helpers for layout
 
 ### Performance
 
-1. **Lazy loading** - Import only what's needed
-2. **Connection reuse** - Single API client instance per command
-3. **Streaming** - Use for long responses to improve UX
+- Lazy import inside hot paths only when there's a real cost
+- One `KobApiClient` per command, reuse it
+- Stream long responses; never await the full body for chat
 
 ### Security
 
-1. **Environment variables** - Never hardcode credentials
-2. **Validation** - Validate all user inputs
-3. **Error messages** - Don't expose sensitive info in errors
+- Env vars only — no hardcoded tokens
+- Validate every user input that becomes a file path or shell command
+- Error messages must not echo API keys or env contents
 
 ## Common Issues & Solutions
 
+### Issue: `Cannot find package 'ora'` (or anything else) on a fresh clone
+
+**Cause:** the project tree was cleaned of legacy files; only the deps in `package.json` are required.
+**Solution:** `bun install` and you are done. If anything in `src/` imports a package that's not in `package.json`, that's a bug — open an issue.
+
+### Issue: `import.meta.dir` errors from `tsc`
+
+**Cause:** it's a Bun-specific extension.
+**Solution:** keep the `// @ts-expect-error import.meta.dir is Bun-specific` comment above the line in `scripts/release.ts`.
+
 ### Issue: Type import errors
-**Solution:** Use `import type` for types
+
+Use `import type` for types:
+
 ```typescript
-import type { ChatResponse } from '../types/index.js';
+import type { ChatMessage, CliConfig } from './core/types.js';
 ```
 
 ### Issue: Undefined content in streams
-**Solution:** Check for undefined before using
+
 ```typescript
-if (event.content) {
-  process.stdout.write(event.content);
-}
+const delta = chunk.choices?.[0]?.delta?.content;
+if (delta) process.stdout.write(delta);
 ```
 
 ### Issue: Missing environment variables
-**Solution:** Check .env file or export variables
+
+Run `kob config` (or `/config` inside the REPL) — the form writes `.env` / `.env.local` in your project root automatically.
+
 ```bash
-export KOB_API_KEY=xxx
-export KOB_API_KEY=xxx
+export KOB_API_KEY=xxx          # only if you must bypass the form
+export KOB_MODEL_ID=deepseek/deepseek-v4-flash
 ```
 
 ## Future Enhancements
 
-### Potential Features
+- Conversation export to Markdown / JSON
+- Multi-profile `.env` switching
+- Plugin hooks (pre/post tool execution)
+- Built-in token cost estimator
+- In-terminal Markdown preview pane
 
-1. **Conversation Export**
-   - Export chat history to file
-   - Multiple formats (JSON, Markdown, TXT)
-
-2. **Batch Operations**
-   - Process multiple messages from file
-
-3. **Configuration File**
-   - Save default provider/model preferences
-   - Multiple profile support
-
-4. **Plugin System**
-   - Custom command plugins
-   - Third-party integrations
-
-5. **Advanced Formatting**
-   - Markdown rendering in terminal
-   - Syntax highlighting for code
-
-6. **Caching**
-   - Cache model list
-   - Cache frequently accessed data
+Out of scope, intentionally: editor plugin, GUI client, global cross-project memory store.
 
 ## Dependencies
 
 ### Production
-- `commander` - CLI framework
-- `chalk` - Terminal styling
-- `ora` - Loading spinners
+- `@clack/prompts` — interactive form widgets
+- `chalk` — terminal styling
+- `commander` — CLI framework
 
 ### Development
-- `@types/bun` - Bun type definitions
-- `typescript` - TypeScript compiler
+- `@types/node` — Node type definitions
+- `typescript` — TypeScript compiler
 
-## Build & Deployment
+`bun` is the runtime and package manager (no separate npm lockfile is shipped).
+
+## Build & Release
 
 ### Development
 ```bash
-bun dev <command>
+bun run dev                # live REPL
+bun run typecheck          # tsc --noEmit
 ```
 
-### Production Build
+### Production binary
 ```bash
-bun run build
-# Creates kob-cli.exe
+bun run build:only         # compile to ./kob-cli.exe (no version bump, no publish)
 ```
 
-### Global Installation
+### Auto release (bump + build + publish + push + tag)
 ```bash
-bun install -g .
-# or
-bun link
+npm run build              # full auto release on default branch
+npm run release:patch      # explicit patch bump
+npm run release:minor      # explicit minor bump
+npm run release:major      # explicit major bump
 ```
+
+`npm run build` is intentionally a release — it bumps `package.json`, builds the binary, runs `npm publish`, and creates the `vX.Y.Z` git tag. Use `build:only` for plain binary compilation.
 
 ## Reference
 
-- **API Documentation**: See `/my-app/docs/` directory
-- **Type Definitions**: `src/types/index.ts`
-- **API Client**: `src/utils/api.ts`
-- **Commands**: `src/commands/*.ts`
+- **Source map**: this file (`AGENTS.md`)
+- **Detailed design log**: [`docs/00-overview.md`](docs/00-overview.md) through [`docs/17-legacy-and-migration-notes.md`](docs/17-legacy-and-migration-notes.md)
+- **API client**: `src/core/api.ts`
+- **Engine**: `src/core/engine.ts`
+- **REPL loop**: `src/repl.ts`
