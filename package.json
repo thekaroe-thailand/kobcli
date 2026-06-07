@@ -1,26 +1,22 @@
 {
   "name": "kob-cli",
-  "version": "1.0.31",
-  "description": "KOB CLI — AI-powered code generation tool. Built by Kob AI, made in Thailand.",
+  "version": "2.0.1",
+  "description": "KOB CLI v2 - a beautiful, fully agentic AI coding assistant for your terminal. Made in Thailand.",
   "type": "module",
   "bin": {
-    "kob": "bin/cli.cjs"
+    "kob": "bin/kob.mjs"
   },
   "files": [
     "bin/",
     "src/",
     "LICENSE",
     "README.md",
-    "AGENTS.md",
-    "INSTALL.md",
-    "MANUAL.md",
-    "QUICKSTART.md",
-    "SPECTS.md",
     ".env.example"
   ],
   "scripts": {
     "dev": "bun run src/index.ts",
     "start": "bun run src/index.ts",
+    "typecheck": "tsc --noEmit",
     "build": "bun run src/scripts/release.ts",
     "build:only": "bun build src/index.ts --compile --outfile kob-cli",
     "release:patch": "bun run src/scripts/release.ts patch",
@@ -30,52 +26,28 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "peerDependenciesMeta": {
-    "bun": {
-      "optional": true
-    }
-  },
-  "publishConfig": {
-    "access": "public"
-  },
   "author": {
     "name": "Kob AI",
     "url": "https://www.kob-ai.dev"
   },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/thekaroe-thailand/kobcli.git"
-  },
-  "license": "SEE LICENSE IN LICENSE",
-  "homepage": "https://www.kob-ai.dev",
-  "bugs": {
-    "url": "https://github.com/thekaroe-thailand/kobcli/issues"
-  },
+  "license": "MIT",
   "keywords": [
     "kob",
     "ai",
     "cli",
+    "agent",
     "code-generation",
-    "chat",
+    "tui",
     "terminal",
     "thailand"
   ],
-  "devDependencies": {
-    "@types/bun": "^1.3.14",
-    "@types/inquirer": "^9.0.9",
-    "@types/react": "^19.2.16"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
-  },
   "dependencies": {
+    "@clack/prompts": "^1.5.1",
     "chalk": "^5.6.2",
-    "commander": "^15.0.0",
-    "ink": "^7.0.5",
-    "inquirer": "^14.0.2",
-    "ora": "^9.4.0",
-    "prompts": "^2.4.2",
-    "react": "^19.2.7",
-    "react-devtools-core": "^7.0.1"
+    "commander": "^15.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
   }
 }
