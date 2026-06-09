@@ -86,6 +86,20 @@ program
     });
 
 program
+    .command('upgrade')
+    .description('Update KOB CLI to the latest version')
+    .action(() => {
+        console.log(chalk.hex(C.cyan)('  Upgrading KOB CLI...'));
+        const { spawnSync } = require('node:child_process');
+        const r = spawnSync('npm', ['i', '-g', 'kob-cli@latest'], { stdio: 'inherit', shell: true });
+        if (r.status === 0) {
+            console.log(chalk.hex(C.green)('\n  Successfully upgraded!'));
+        } else {
+            console.log(chalk.hex(C.red)('\n  Upgrade failed.'));
+        }
+    });
+
+program
     .command('chat', { isDefault: true })
     .description('Launch the interactive TUI (default)')
     .action(async () => { await runRepl(VERSION); });

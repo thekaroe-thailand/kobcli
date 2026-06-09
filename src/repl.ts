@@ -35,7 +35,7 @@ import { C, dim, disableMouse } from './ui/theme.js';
 const KNOWN_COMMANDS = new Set([
     'chat', 'ask', 'plan', 'code', 'clear', 'newchat', 'reset', 'exit', 'quit',
     'help', 'models', 'config', 'git', 'diff', 'undo', 'tokens', 'init', 'find', 'replace',
-    'openfile', 'open', 'read', 'ls', 'dir', 'project:list', 'project:create', 'project:delete',
+    'openfile', 'open', 'read', 'ls', 'dir', 'project:list', 'project:create', 'project:delete', 'upgrade'
 ]);
 
 interface LocalSearchState {
@@ -456,6 +456,18 @@ async function handleCommand(
             } catch { /* */ }
             writeFileSync(path, makeAgentsMd(pkgName, tree), 'utf-8');
             banner('Created AGENTS.md', C.green);
+            return { state };
+        }
+
+        case 'upgrade': {
+            banner('Upgrading KOB CLI...', C.cyan);
+            const r = runShellCommand('npm i -g kob-cli@latest', process.cwd());
+            reportCommand(r);
+            if (r.exitCode === 0) {
+                banner('Successfully upgraded! Please restart KOB CLI to use the new version.', C.green);
+            } else {
+                banner('Upgrade failed. Please try running "npm i -g kob-cli@latest" manually.', C.red);
+            }
             return { state };
         }
 

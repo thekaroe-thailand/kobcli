@@ -73,6 +73,7 @@ const SLASH_OPTIONS = [
     { value: '/project:delete', label: '/project:delete Remove a project' },
     { value: '/clear', label: '/clear    Clear session' },
     { value: '/help', label: '/help     Show all commands' },
+    { value: '/upgrade', label: '/upgrade  Update KOB CLI to latest' },
     { value: '/exit', label: '/exit     Quit' },
 ];
 
