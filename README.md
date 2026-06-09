@@ -33,6 +33,7 @@ It is designed to feel like a disciplined pair programmer inside your terminal:
 - 🔍 **Reads first** — the engine injects your file tree into context, so the model knows what you have before suggesting changes.
 - 🛠 **Acts, not just answers** — `read_file`, `str_replace`, `write_file`, and shell commands are first-class tool calls, not hidden magic.
 - 🎨 **Colored diffs, visible progress** — every read, replacement, file write, and command run is reported inline as it happens.
+- ⚡ **Interactive slash commands** — real-time autocomplete for commands like `/models`, `/undo`, and `/config` directly in the prompt.
 - ↩️ **`/undo` is real undo** — every file mutation in the last turn can be reverted, no Git ceremony required.
 - 🛡 **Safe by default** — destructive shell commands are flagged in red and require explicit `Y` confirmation.
 - 💾 **Remembers your project** — per-project session history means reopening `kob` in the same repo picks up where you left off.

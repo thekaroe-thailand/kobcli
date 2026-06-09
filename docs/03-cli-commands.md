@@ -121,9 +121,11 @@ The following are not separate Commander commands. They are slash commands or in
 - mode switches: `/chat`, `/ask`, `/plan`, `/code`
 - session control: `/clear`, `/newchat`, `/reset`, `/exit`, `/quit`
 - assistance: `/help`, `/models`, `/config`, `/tokens`
-- project ops: `/git`, `/diff`, `/undo`, `/init`, `/find`, `/replace`
+- project ops: `/git`, `/diff`, `/undo`, `/init`, `/find`, `/replace`, `/open`
 - global projects: `/project:list`, `/project:create`, `/project:delete`
 - direct shell input: `$ command` or `> command`
+
+*Note: Slash commands support real-time autocomplete as you type `/` in the prompt.*
 
 ## Documentation warning about old command docs
 
