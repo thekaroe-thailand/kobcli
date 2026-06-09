@@ -51,7 +51,11 @@ class TurnIO {
         // Only react to a LONE Esc / Ctrl-C keypress. Mouse wheel and arrow
         // keys arrive as multi-byte escape sequences and must be ignored.
         if (chunk.length === 1 && chunk[0] === 0x1b) this.ac.abort();          // Esc
-        else if (chunk.length === 1 && chunk[0] === 0x03) { this.disableEsc(); process.exit(130); } // Ctrl-C
+        else if (chunk.length === 1 && chunk[0] === 0x03) {
+            this.disableEsc();
+            console.log('\nExiting...');
+            process.exit(130);
+        } // Ctrl-C
     };
     enableEsc(): void {
         if (this.listening || !process.stdin.isTTY) return;

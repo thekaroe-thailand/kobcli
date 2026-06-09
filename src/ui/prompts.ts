@@ -237,7 +237,9 @@ export async function promptInput(message: string): Promise<string | null> {
 
         const onKeypress = async (sequence: string, key: { name?: string; ctrl?: boolean }) => {
             if (key.ctrl && key.name === 'c') {
-                finish(null);
+                finish(null, false);
+                console.log('\nExiting...');
+                process.exit(130);
                 return;
             }
             if (key.ctrl && key.name === 'a') {
