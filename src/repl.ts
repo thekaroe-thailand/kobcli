@@ -27,14 +27,15 @@ import { Spinner } from './ui/spinner.js';
 import {
     promptInput, pickSlashCommand, pickModel, editConfig, confirmCommand,
     promptSearchQuery, promptSearchAction, promptReplacementText, pickSearchFile,
-    promptOpenFile,
+    promptOpenFile, pickProject, promptProjectCreate, pickProjectToDelete,
 } from './ui/prompts.js';
+import { loadProjects, saveProjects, addProject, removeProject } from './core/projects.js';
 import { C, dim, disableMouse } from './ui/theme.js';
 
 const KNOWN_COMMANDS = new Set([
     'chat', 'ask', 'plan', 'code', 'clear', 'newchat', 'reset', 'exit', 'quit',
     'help', 'models', 'config', 'git', 'diff', 'undo', 'tokens', 'init', 'find', 'replace',
-    'openfile', 'open', 'read', 'ls', 'dir',
+    'openfile', 'open', 'read', 'ls', 'dir', 'project:list', 'project:create', 'project:delete',
 ]);
 
 interface LocalSearchState {
@@ -372,6 +373,58 @@ async function handleCommand(
                     console.log('  ' + chalk.hex(C.cyan)('╰─ ') + dim(`${lines.length} lines`));
                     console.log('');
                 }
+            }
+            return { state };
+        }
+
+        case 'project:list': {
+            const projects = loadProjects();
+            if (projects.length === 0) {
+                banner('No projects found. Use /project:create to add one.', C.gray);
+                return { state };
+            }
+            const pickedPath = await pickProject(projects);
+            if (pickedPath) {
+                if (existsSync(pickedPath)) {
+                    process.chdir(pickedPath);
+                    banner(`Switched to project at ${pickedPath}`, C.green);
+                    // clear session context for the new project
+                    const nextState = createInitialState(getConfig()!);
+                    // replay history for the new directory
+                    if (nextState.exchanges.length > 0) {
+                        banner(`Resumed session · ${nextState.exchanges.length} previous rounds`, C.slate);
+                        for (const e of nextState.exchanges.slice(-2)) replayExchange(e, nextState.exchanges.indexOf(e));
+                    }
+                    return { state: nextState, clearUndo: true };
+                } else {
+                    banner(`Directory not found: ${pickedPath}`, C.red);
+                }
+            }
+            return { state };
+        }
+
+        case 'project:create': {
+            const result = await promptProjectCreate();
+            if (result) {
+                if (!existsSync(result.path)) {
+                    banner(`Warning: Directory does not exist (${result.path})`, C.amber);
+                }
+                addProject(result.name, result.path);
+                banner(`Project "${result.name}" added`, C.green);
+            }
+            return { state };
+        }
+
+        case 'project:delete': {
+            const projects = loadProjects();
+            if (projects.length === 0) {
+                banner('No projects to delete.', C.gray);
+                return { state };
+            }
+            const pickedName = await pickProjectToDelete(projects);
+            if (pickedName) {
+                removeProject(pickedName);
+                banner(`Project "${pickedName}" removed`, C.orange);
             }
             return { state };
         }

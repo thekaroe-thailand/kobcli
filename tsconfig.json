@@ -15,7 +15,8 @@
     "resolveJsonModule": true,
     "allowImportingTsExtensions": false,
     "verbatimModuleSyntax": false,
-    "declaration": false
+    "declaration": false,
+    "jsx": "react"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist"]

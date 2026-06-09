@@ -58,7 +58,7 @@ This document provides comprehensive specifications for AI agents working on the
 - The interactive loop users spend 99% of their time in
 - `runRepl(state, cfg, …)` — main loop, reads input, dispatches to `runTurn`
 - `runTurn(state, input, cfg, …)` — single agentic turn, returns `{ state, connectionError }`
-- Handles slash commands (`/models`, `/config`, `/git`, `/diff`, `/undo`, `/clear`, …)
+- Handles slash commands (`/models`, `/config`, `/git`, `/diff`, `/undo`, `/project:list`, `/clear`, …)
 - `TurnIO` class — manages spinner + Esc abort signal + `approveCommand` confirmation
 - `waitForRetryKey()` — listens for a single keypress (`R` = retry) after a connection failure
 
@@ -80,6 +80,7 @@ This document provides comprehensive specifications for AI agents working on the
 - Returns `{ state, undo, error? }` — `error` is the user-facing message
 
 **modes.ts** — system prompts + mode-specific nudge text for `Ask`, `Plan`, `Code`
+**projects.ts** — global list of project directories in `~/.kob-cli/projects.json`
 **config.ts** — `getConfig()` reads `process.env` (Bun auto-loads `.env` / `.env.local`)
 **env-file.ts** — `readEnvFile()` / `writeEnvFile()` for the `kob config` form, comment-preserving
 **history.ts** — per-`cwd` session persistence to `~/.kob-cli/sessions/<hash>.jsonl`

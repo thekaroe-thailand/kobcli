@@ -34,6 +34,13 @@ Defined as `SLASH_COMMANDS` in `[[code-tui]]`:
 | meta (purple) | `/config` | edit base_url, key, model → `.env` |
 | meta (purple) | `/help` | list every slash command |
 | meta (purple) | `/exit` | quit KOB CLI |
+| meta (purple) | `/find` | Find text within files in `cwd` |
+| meta (purple) | `/replace` | Replace exact text across files |
+| meta (purple) | `/open` | Open a file to read its contents |
+| session (green) | `/project:list` | Select a saved project to switch into |
+| session (green) | `/project:create` | Save a project name and path to the global list |
+| session (green) | `/project:delete` | Remove a project from the global list |
+| meta (purple) | `/init` | Scaffold an `AGENTS.md` file in the current directory |
 
 Adding a new command means adding it to this array **and** adding a `case` in `handleSlashCommand`. Forgetting the second step will leave the command in the autocomplete popup but not actually do anything.
 
