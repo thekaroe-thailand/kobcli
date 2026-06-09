@@ -186,6 +186,16 @@ Inside the REPL:
 6. **Undo** — ask the model to write a file, then `/undo` (file must be reverted)
 7. **Dangerous command** — ask the model to run `rm -rf tmp-test/`, confirm the red banner
 
+## Mandatory Agent Workflow
+
+AI Agents working on this project MUST adhere to the following workflow rules:
+
+1. **Read Before Writing**: Always read relevant documentation and codebase context before starting any task.
+2. **Document Problem Solutions**: Whenever a problem or bug is solved, write down the lesson learned in the relevant documentation file.
+3. **Document New Features**: Whenever a new feature is added, create or update the corresponding documentation files immediately.
+4. **Update README.md**: If the change affects public-facing commands, features, or installation steps, update `README.md` to reflect those changes.
+5. **Commit and Push Promptly**: Once a task is fully completed and tested, commit the changes and push them to Git immediately. Do not leave uncommitted work hanging.
+
 ## Best Practices
 
 ### Code Style

@@ -96,6 +96,19 @@ kob config
 - useful both for first-time setup and switching model defaults later
 - the same underlying config editing flow is available inside the REPL through `/config`
 
+## `kob upgrade`
+
+Updates KOB CLI to the latest version.
+
+### Behavior
+- Executes `npm i -g kob-cli@latest`
+- Prints success or failure feedback
+
+### Typical use
+```bash
+kob upgrade
+```
+
 ## `kob chat`
 
 Starts the interactive REPL.
@@ -120,7 +133,7 @@ The following are not separate Commander commands. They are slash commands or in
 
 - mode switches: `/chat`, `/ask`, `/plan`, `/code`
 - session control: `/clear`, `/newchat`, `/reset`, `/exit`, `/quit`
-- assistance: `/help`, `/models`, `/config`, `/tokens`
+- assistance: `/help`, `/models`, `/config`, `/tokens`, `/upgrade`
 - project ops: `/git`, `/diff`, `/undo`, `/init`, `/find`, `/replace`, `/open`
 - global projects: `/project:list`, `/project:create`, `/project:delete`
 - direct shell input: `$ command` or `> command`

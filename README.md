@@ -110,12 +110,16 @@ If any of those three error out, the checkout is broken — open an issue.
 
 ### Update
 
-```bash
-# npm install
-npm update -g kob-cli
+You can easily upgrade KOB CLI to the latest version directly using:
 
-# from source
-cd kobcli && git pull && bun install && bun link
+```bash
+kob upgrade
+```
+
+Or manually via npm:
+
+```bash
+npm update -g kob-cli
 ```
 
 ### Uninstall
