@@ -96,6 +96,54 @@ export async function promptInput(message: string): Promise<string | null> {
         let historyIndex = -1;
         let tempValue = '';
 
+        // ── slash-command suggestions ────────────────────────
+        let showSuggestions = false;
+        let suggestedCommands: typeof SLASH_OPTIONS = [];
+        let selectedSuggestion = 0;
+        let suggestionScrollOffset = 0; // index of first visible item
+
+        /** How many suggestion rows fit below the prompt line. */
+        const suggestionRows = () => {
+            const termRows = process.stdout.rows || 24;
+            // 1 row for the prompt itself, 1 margin
+            return Math.max(3, termRows - 8);
+        };
+
+        const updateSuggestions = () => {
+            if (!value.startsWith('/') || value === '/') {
+                // Show all commands when only "/" is typed
+                suggestedCommands = value === '/' ? SLASH_OPTIONS : [];
+                showSuggestions = value === '/';
+                selectedSuggestion = 0;
+                suggestionScrollOffset = 0;
+                return;
+            }
+            const partial = value.slice(1).toLowerCase();
+            // Only show suggestions for partial command names (no arguments yet)
+            if (partial.includes(' ')) {
+                showSuggestions = false;
+                return;
+            }
+            const filtered = SLASH_OPTIONS.filter((opt) => {
+                const cmd = opt.value.slice(1).toLowerCase();
+                return cmd.startsWith(partial);
+            });
+            suggestedCommands = filtered;
+            showSuggestions = filtered.length > 0;
+            selectedSuggestion = 0;
+            suggestionScrollOffset = 0;
+        };
+
+        /** Ensure selectedSuggestion is within the visible scroll window. */
+        const clampScroll = () => {
+            const maxVisible = suggestionRows();
+            if (selectedSuggestion < suggestionScrollOffset) {
+                suggestionScrollOffset = selectedSuggestion;
+            } else if (selectedSuggestion >= suggestionScrollOffset + maxVisible) {
+                suggestionScrollOffset = selectedSuggestion - maxVisible + 1;
+            }
+        };
+
         // Count how many terminal rows the rendered prompt occupies so the
         // next render can move the cursor back and clear wrapped lines too.
         const countWrappedLines = (text: string): number => {
@@ -135,6 +183,29 @@ export async function promptInput(message: string): Promise<string | null> {
             const fullText = `${message} ${content}`;
             stdout.write(fullText);
             renderedLines = countWrappedLines(fullText);
+
+            // ── slash-command suggestions ────────────────────────
+            if (showSuggestions && suggestedCommands.length > 0) {
+                const maxVisible = suggestionRows();
+                const visible = suggestedCommands.slice(suggestionScrollOffset, suggestionScrollOffset + maxVisible);
+                for (let i = 0; i < visible.length; i++) {
+                    stdout.write('\n');
+                    const opt = visible[i]!;
+                    const isSelected = (suggestionScrollOffset + i) === selectedSuggestion;
+                    const prefix = isSelected ? chalk.hex(C.cyan)('▸ ') : '  ';
+                    const line = isSelected
+                        ? chalk.bgHex('#1a3a4a').white(opt.label)
+                        : chalk.hex(C.slate)(opt.label);
+                    stdout.write(prefix + line);
+                }
+                // Show scroll indicator if there are more items
+                const total = suggestedCommands.length;
+                if (total > suggestionScrollOffset + visible.length) {
+                    stdout.write('\n  ' + chalk.hex(C.slate)('↓ ' + (total - suggestionScrollOffset - visible.length) + ' more'));
+                }
+                renderedLines += visible.length;
+                if (total > suggestionScrollOffset + visible.length) renderedLines += 1;
+            }
         };
 
         const refreshCursor = () => {
@@ -176,7 +247,25 @@ export async function promptInput(message: string): Promise<string | null> {
                 refreshCursor();
                 return;
             }
+            if (key.name === 'escape') {
+                if (showSuggestions) {
+                    showSuggestions = false;
+                    refreshCursor();
+                    return;
+                }
+                // Escape without suggestions → let it fall through to the
+                // sanity guard below, preserving existing behaviour.
+            }
             if (key.name === 'return' || key.name === 'enter') {
+                if (showSuggestions && suggestedCommands.length > 0) {
+                    const chosen = suggestedCommands[selectedSuggestion];
+                    if (chosen) {
+                        const out = sanitizeInput(chosen.value);
+                        recordPromptEntry(out);
+                        finish(out);
+                        return;
+                    }
+                }
                 const out = sanitizeInput(value);
                 recordPromptEntry(out);
                 finish(out);
@@ -207,6 +296,7 @@ export async function promptInput(message: string): Promise<string | null> {
                     value = value.slice(0, cursor - 1) + value.slice(cursor);
                     cursor -= 1;
                 }
+                updateSuggestions();
                 refreshCursor();
                 return;
             }
@@ -214,18 +304,39 @@ export async function promptInput(message: string): Promise<string | null> {
                 if (cursor < value.length) {
                     value = value.slice(0, cursor) + value.slice(cursor + 1);
                 }
+                updateSuggestions();
                 refreshCursor();
+                return;
+            }
+            if (key.name === 'tab') {
+                if (showSuggestions && suggestedCommands.length > 0) {
+                    const chosen = suggestedCommands[selectedSuggestion] ?? suggestedCommands[0];
+                    if (chosen) {
+                        value = chosen.value;
+                        cursor = value.length;
+                        showSuggestions = false;
+                        refreshCursor();
+                        return;
+                    }
+                }
                 return;
             }
             if (key.ctrl && key.name === 'u') {
                 value = '';
                 cursor = 0;
+                updateSuggestions();
                 refreshCursor();
                 return;
             }
 
-            // Arrow up / down: walk through saved prompt history.
+            // ── suggestion navigation (overrides history when suggestions visible) ─
             if (key.name === 'up') {
+                if (showSuggestions && suggestedCommands.length > 0) {
+                    selectedSuggestion = Math.max(0, selectedSuggestion - 1);
+                    clampScroll();
+                    refreshCursor();
+                    return;
+                }
                 if (promptHistory.length === 0) return;
                 if (historyIndex === -1) tempValue = value;
                 historyIndex = Math.min(promptHistory.length - 1, historyIndex + 1);
@@ -235,6 +346,12 @@ export async function promptInput(message: string): Promise<string | null> {
                 return;
             }
             if (key.name === 'down') {
+                if (showSuggestions && suggestedCommands.length > 0) {
+                    selectedSuggestion = Math.min(suggestedCommands.length - 1, selectedSuggestion + 1);
+                    clampScroll();
+                    refreshCursor();
+                    return;
+                }
                 if (historyIndex <= -1) return;
                 historyIndex -= 1;
                 value = historyIndex === -1 ? tempValue : (promptHistory[promptHistory.length - 1 - historyIndex] ?? '');
@@ -257,6 +374,7 @@ export async function promptInput(message: string): Promise<string | null> {
 
             value = value.slice(0, cursor) + sequence + value.slice(cursor);
             cursor += sequence.length;
+            updateSuggestions();
             refreshCursor();
         };
 
@@ -454,6 +572,7 @@ async function pickSearchableOption(
         let settled = false;
         let blinkTimer: NodeJS.Timeout | undefined;
         let activeIndex = 0;
+        let initialPositionSeeded = false;
 
         const renderInlineValue = () => {
             const before = query.slice(0, cursor);
@@ -472,9 +591,11 @@ async function pickSearchableOption(
                 activeIndex = 0;
                 return filtered;
             }
-            if (!query.trim() && current) {
+            // Only auto-select current model on first render, not on every render
+            if (!initialPositionSeeded && !query.trim() && current) {
                 const preferred = filtered.findIndex((option) => option.value === current);
                 if (preferred >= 0) activeIndex = preferred;
+                initialPositionSeeded = true;
             }
             activeIndex = Math.max(0, Math.min(activeIndex, filtered.length - 1));
             return filtered;
