@@ -225,6 +225,9 @@ Type `/` to open the autocomplete menu, or type the command directly:
 | `/find <text>`  | Search text across the project, scoped to the current directory        |
 | `/replace <a> <b>` | Replace `<a>` with `<b>` in one or all files                       |
 | `/open`         | Open a file and read it with line numbers                             |
+| `/project:create` | Create a new project bookmark (prompts for name and path)             |
+| `/project:list`   | List saved projects and switch to one (changes cwd)                   |
+| `/project:delete` | Remove a project bookmark from the list                               |
 | `/clear`        | Clear the in-memory session                                           |
 | `/reset`        | Clear + reload model from config                                      |
 | `/help`         | Show all slash commands                                               |

@@ -122,6 +122,7 @@ The following are not separate Commander commands. They are slash commands or in
 - session control: `/clear`, `/newchat`, `/reset`, `/exit`, `/quit`
 - assistance: `/help`, `/models`, `/config`, `/tokens`
 - project ops: `/git`, `/diff`, `/undo`, `/init`, `/find`, `/replace`
+- global projects: `/project:list`, `/project:create`, `/project:delete`
 - direct shell input: `$ command` or `> command`
 
 ## Documentation warning about old command docs

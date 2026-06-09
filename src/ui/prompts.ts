@@ -68,6 +68,9 @@ const SLASH_OPTIONS = [
     { value: '/open', label: '/open     Open and read a file' },
     { value: '/init', label: '/init     Scaffold AGENTS.md' },
     { value: '/tokens', label: '/tokens   Usage this session' },
+    { value: '/project:list', label: '/project:list   List and switch projects' },
+    { value: '/project:create', label: '/project:create Create a new project' },
+    { value: '/project:delete', label: '/project:delete Remove a project' },
     { value: '/clear', label: '/clear    Clear session' },
     { value: '/help', label: '/help     Show all commands' },
     { value: '/exit', label: '/exit     Quit' },
@@ -796,6 +799,45 @@ export async function pickModel(current: string): Promise<string | null> {
     return formatModel(result as string);
 }
 
+export async function pickProject(projects: { name: string; path: string }[]): Promise<string | null> {
+    if (projects.length === 0) return null;
+    const options = projects.map(p => ({
+        value: p.path,
+        label: p.name,
+        hint: p.path,
+    }));
+    const result = options.length > 12
+        ? await pickSearchableOption('Select project', options)
+        : await select({ message: 'Select project', options, maxItems: 12 });
+    if (isCancel(result)) return null;
+    return result as string;
+}
+
+export async function promptProjectCreate(): Promise<{ name: string; path: string } | null> {
+    const nameResult = await text({ message: 'Project name', placeholder: 'my-awesome-project' });
+    if (isCancel(nameResult) || !nameResult) return null;
+    const name = sanitizeInput(nameResult as string).trim();
+
+    const pathResult = await text({ message: 'Project absolute path', placeholder: process.cwd(), initialValue: process.cwd() });
+    if (isCancel(pathResult) || !pathResult) return null;
+    const projectPath = sanitizeInput(pathResult as string).trim();
+
+    return { name, path: projectPath };
+}
+
+export async function pickProjectToDelete(projects: { name: string; path: string }[]): Promise<string | null> {
+    if (projects.length === 0) return null;
+    const options = projects.map(p => ({
+        value: p.name,
+        label: p.name,
+        hint: p.path,
+    }));
+    const result = options.length > 12
+        ? await pickSearchableOption('Select project to delete', options)
+        : await select({ message: 'Select project to delete', options, maxItems: 12 });
+    if (isCancel(result)) return null;
+    return result as string;
+}
 export async function editConfig(): Promise<boolean> {
     const env = readEnvFile();
     console.log('  ' + chalk.dim('editing ' + describeEnvPath()));
