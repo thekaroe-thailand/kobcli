@@ -1,6 +1,6 @@
 {
   "name": "kob-cli",
-  "version": "2.0.16",
+  "version": "2.0.17",
   "description": "KOB CLI v2 - a beautiful, fully agentic AI coding assistant for your terminal. Made in Thailand.",
   "type": "module",
   "bin": {
@@ -70,6 +70,7 @@
     "ink": "^7.0.5",
     "ora": "^9.4.0",
     "react": "^19.2.7",
+    "string-width": "^8.2.1",
     "tsx": "^4.22.4"
   },
   "devDependencies": {
