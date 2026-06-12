@@ -1,7 +1,7 @@
 // RENDER - status bar, framed rounds, diffs, help
 
 import chalk from 'chalk';
-import { C, dim, bold, rule, termWidth, contentWidth, wrapVisible, disableMouse } from './theme.js';
+import { C, dim, bold, rule, termWidth, contentWidth, wrapVisible, disableMouse, visibleLength } from './theme.js';
 import { renderMarkdown } from './markdown.js';
 import { getMode } from '../core/modes.js';
 import { getContextWindow, contextUsage } from '../core/engine.js';
@@ -58,7 +58,7 @@ const COMMANDS: [string, string, string][] = [
     ['/plan', 'Architect a solution', C.violet],
     ['/code', 'Build & edit autonomously', C.green],
     ['/models', 'Switch AI model', C.amber],
-    ['/config', 'Edit .env settings', C.pink],
+    ['/config', 'Edit global KOB settings', C.pink],
     ['/diff', 'Show last changes', C.orange],
     ['/undo', 'Revert last changes', C.orange],
     ['/git', 'Repo status', C.green],
@@ -130,7 +130,7 @@ export function printDiff(oldStr: string, newStr: string, maxLines = 40): void {
     let shown = 0;
     for (const l of lines) {
         if (shown >= maxLines) { console.log('    ' + dim(`… (+${lines.length - shown} more lines)`)); break; }
-        const t = l.text.length > w ? l.text.slice(0, w - 1) + '…' : l.text;
+        const t = visibleLength(l.text) > w ? l.text.slice(0, w - 1) + '…' : l.text;
         if (l.type === 'add') console.log('    ' + chalk.hex(C.green)('+ ' + t));
         else if (l.type === 'del') console.log('    ' + chalk.hex(C.red)('- ' + t));
         else console.log('    ' + dim('  ' + t));
@@ -144,7 +144,7 @@ function railDiff(oldStr: string, newStr: string, maxLines = 16): void {
     let shown = 0;
     for (const l of lines) {
         if (shown >= maxLines) { console.log('  ' + bar() + '  ' + dim(`… (+${lines.length - shown} more lines)`)); break; }
-        const t = l.text.length > w ? l.text.slice(0, w - 1) + '…' : l.text;
+        const t = visibleLength(l.text) > w ? l.text.slice(0, w - 1) + '…' : l.text;
         if (l.type === 'add') console.log('  ' + bar() + '  ' + chalk.hex(C.green)('+ ' + t));
         else if (l.type === 'del') console.log('  ' + bar() + '  ' + chalk.hex(C.red)('- ' + t));
         else console.log('  ' + bar() + '  ' + dim(t));
@@ -179,7 +179,7 @@ export function reportCommand(r: CommandResult): void {
     if (r.skipped) return;
     const w = railWidth() - 2;
     const out = (r.stdout || r.stderr || '').split('\n').filter(Boolean).slice(0, 6);
-    for (const o of out) console.log('  ' + bar() + '  ' + dim(o.length > w ? o.slice(0, w - 1) + '…' : o));
+    for (const o of out) console.log('  ' + bar() + '  ' + dim(visibleLength(o) > w ? o.slice(0, w - 1) + '…' : o));
     console.log('  ' + bar() + '  ' + dim(`exit ${r.exitCode} · ${fmtDuration(r.durationMs)}`));
 }
 

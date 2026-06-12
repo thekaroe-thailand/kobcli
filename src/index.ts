@@ -15,6 +15,7 @@ import { handleSubmit, createInitialState, formatModel } from './core/engine.js'
 import { editConfig } from './ui/prompts.js';
 import { renderMarkdown } from './ui/markdown.js';
 import { errorBox, banner } from './ui/render.js';
+import { runUpgrade } from './core/upgrade.js';
 import { C } from './ui/theme.js';
 import chalk from 'chalk';
 
@@ -77,7 +78,7 @@ program
 
 program
     .command('config')
-    .description('Edit configuration (.env.local)')
+    .description('Edit global configuration (~/.kob-cli/config.env)')
     .action(async () => {
         loadEnv();
         banner('KOB CLI configuration', C.cyan);
@@ -88,14 +89,16 @@ program
 program
     .command('upgrade')
     .description('Update KOB CLI to the latest version')
-    .action(() => {
-        console.log(chalk.hex(C.cyan)('  Upgrading KOB CLI...'));
-        const { spawnSync } = require('node:child_process');
-        const r = spawnSync('npm', ['i', '-g', 'kob-cli@latest'], { stdio: 'inherit', shell: true });
-        if (r.status === 0) {
+    .action(async () => {
+        const r = await runUpgrade();
+        if (r.visibleOutput.length > 0) {
+            console.log(r.visibleOutput.map((line) => '  ' + line).join('\n'));
+        }
+        if (r.ok) {
             console.log(chalk.hex(C.green)('\n  Successfully upgraded!'));
         } else {
             console.log(chalk.hex(C.red)('\n  Upgrade failed.'));
+            process.exitCode = r.exitCode || 1;
         }
     });
 

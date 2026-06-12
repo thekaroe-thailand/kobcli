@@ -1,23 +1,16 @@
 // ════════════════════════════════════════════════════════════
-//  ENV FILE — read / write .env.local (preserving comments)
+//  ENV FILE — read / write global config.env (preserving comments)
 // ════════════════════════════════════════════════════════════
 
 import { readFileSync, writeFileSync, existsSync, chmodSync } from 'node:fs';
-import { join } from 'node:path';
-
-const ENV_CANDIDATES = ['.env.local', '.env'];
+import { ensureKobConfigDir, getGlobalEnvPath, getLegacyProjectEnvPath, resolveReadEnvPath } from './config-paths.js';
 
 export function getEnvPath(): string {
-    const cwd = process.cwd();
-    for (const name of ENV_CANDIDATES) {
-        const p = join(cwd, name);
-        if (existsSync(p)) return p;
-    }
-    return join(cwd, '.env.local');
+    return resolveReadEnvPath();
 }
 
 export function readEnvFile(): Record<string, string> {
-    const p = getEnvPath();
+    const p = resolveReadEnvPath();
     if (!existsSync(p)) return {};
     return parseEnvText(readFileSync(p, 'utf-8'));
 }
@@ -40,12 +33,13 @@ function parseEnvText(text: string): Record<string, string> {
 }
 
 export function writeEnvFile(updates: Record<string, string>, comments?: Record<string, string>): void {
-    const p = getEnvPath();
-    const examplePath = join(process.cwd(), '.env.example');
+    ensureKobConfigDir();
+    const p = getGlobalEnvPath();
+    const legacyPath = getLegacyProjectEnvPath();
 
     let content: string;
     if (existsSync(p)) content = readFileSync(p, 'utf-8');
-    else if (existsSync(examplePath)) content = readFileSync(examplePath, 'utf-8');
+    else if (legacyPath && existsSync(legacyPath)) content = readFileSync(legacyPath, 'utf-8');
     else content = '# KOB CLI v2 Configuration\n';
 
     const lines = content.split(/\r?\n/);
@@ -80,5 +74,5 @@ export function writeEnvFile(updates: Record<string, string>, comments?: Record<
 }
 
 export function describeEnvPath(): string {
-    return getEnvPath();
+    return getGlobalEnvPath();
 }

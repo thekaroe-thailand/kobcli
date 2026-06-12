@@ -1,20 +1,13 @@
 import { readFileSync, writeFileSync, existsSync, chmodSync } from 'fs';
-import { join } from 'path';
-
-const ENV_CANDIDATES = ['.env.local', '.env'];
+import { ensureKobConfigDir, getGlobalEnvPath, getLegacyProjectEnvPath, resolveReadEnvPath } from '../core/config-paths.js';
 
 /**
- * Find the .env file path the CLI should read/write.
- * Prefers .env.local (standard for secrets), falls back to .env.
- * Returns the first existing one, or .env.local if neither exists yet.
+ * Find the config file path the CLI should read.
+ * Prefers the global ~/.kob-cli/config.env file, and falls back to a legacy
+ * project-local .env.local / .env only while migrating older installs.
  */
 export function getEnvPath(): string {
-    const cwd = process.cwd();
-    for (const name of ENV_CANDIDATES) {
-        const p = join(cwd, name);
-        if (existsSync(p)) return p;
-    }
-    return join(cwd, '.env.local');
+    return resolveReadEnvPath();
 }
 
 /**
@@ -22,7 +15,7 @@ export function getEnvPath(): string {
  * (so we can keep them when rewriting), but only returns the values.
  */
 export function readEnvFile(): Record<string, string> {
-    const p = getEnvPath();
+    const p = resolveReadEnvPath();
     if (!existsSync(p)) return {};
     const content = readFileSync(p, 'utf-8');
     return parseEnvText(content);
@@ -50,11 +43,12 @@ function parseEnvText(text: string): Record<string, string> {
 }
 
 /**
- * Update keys in the .env file.
+ * Update keys in the global config file.
  * - Preserves comments, blank lines, and key ordering.
  * - If a key exists, its line is replaced in place.
  * - If a key is missing, it is appended to the end (with a blank line separator).
- * - If the .env file doesn't exist, seeds it from .env.example when present.
+ * - If the global file doesn't exist yet, seeds it from a legacy local env
+ *   file when present so older installs migrate forward cleanly.
  *
  * @param updates  key→value map of entries to set
  * @param comments optional key→comment map for newly-appended keys
@@ -63,14 +57,15 @@ export function writeEnvFile(
     updates: Record<string, string>,
     comments?: Record<string, string>
 ): void {
-    const p = getEnvPath();
-    const examplePath = join(process.cwd(), '.env.example');
+    ensureKobConfigDir();
+    const p = getGlobalEnvPath();
+    const legacyPath = getLegacyProjectEnvPath();
 
     let content: string;
     if (existsSync(p)) {
         content = readFileSync(p, 'utf-8');
-    } else if (existsSync(examplePath)) {
-        content = readFileSync(examplePath, 'utf-8');
+    } else if (legacyPath && existsSync(legacyPath)) {
+        content = readFileSync(legacyPath, 'utf-8');
     } else {
         content = '# KOB AI Configuration\n';
     }
@@ -129,5 +124,5 @@ export function writeEnvFile(
  * Useful for UI hints (e.g. "/config" form).
  */
 export function describeEnvPath(): string {
-    return getEnvPath();
+    return getGlobalEnvPath();
 }

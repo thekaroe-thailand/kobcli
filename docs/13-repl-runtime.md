@@ -110,6 +110,10 @@ Behavior:
 
 This avoids treating every escape sequence as a hard abort.
 
+### Focus recovery on Windows
+
+When the REPL is waiting for keyboard input, Windows terminals can silently drop raw mode after the user clicks away to another window and then clicks back. The prompt layer and `TurnIO` both run a lightweight stdin guard that re-applies raw mode, resumes stdin, and disables mouse reporting while they are active so typing recovers automatically after focus returns.
+
 ## Slash command handling
 
 `handleCommand()` first gives `applySlashState()` a chance to process mode and session commands:

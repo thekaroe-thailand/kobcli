@@ -40,7 +40,7 @@ A practical map of the repository based on the code that currently matters.
 | `src/core/api.ts` | HTTP client for models and chat completions |
 | `src/core/config.ts` | environment loading and config assembly |
 | `src/core/engine.ts` | turn execution, tool orchestration, exchange creation |
-| `src/core/env-file.ts` | `.env.local` / `.env` read-write helpers |
+| `src/core/env-file.ts` | shared `~/.kob-cli/config.env` read-write helpers |
 | `src/core/history.ts` | cwd-scoped session persistence |
 | `src/core/modes.ts` | mode definitions and system prompts |
 | `src/core/types.ts` | shared runtime types |

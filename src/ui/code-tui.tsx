@@ -641,9 +641,9 @@ const SLASH_COMMANDS: SlashCommand[] = [
     { name: 'plan', desc: 'switch to Plan mode (design first)', icon: '○', group: 'mode' },
     { name: 'code', desc: 'switch to Code mode (full agent)', icon: '●', group: 'mode' },
     { name: 'clear', desc: 'clear this session (forget history)', icon: '⌫', group: 'session' },
-    { name: 'reset', desc: 'reset model to the .env default', icon: '↺', group: 'session' },
+    { name: 'reset', desc: 'reset model to the global config default', icon: '↺', group: 'session' },
     { name: 'models', desc: 'pick a model from the catalog', icon: '◆', group: 'session' },
-    { name: 'config', desc: 'edit base_url, key, model → .env', icon: '⚙', group: 'meta' },
+    { name: 'config', desc: 'edit base_url, key, model → global config', icon: '⚙', group: 'meta' },
     { name: 'help', desc: 'list every slash command', icon: '?', group: 'meta' },
     { name: 'exit', desc: 'quit KOB CLI', icon: '⎋', group: 'meta' },
 ];
@@ -1587,7 +1587,7 @@ function HelpScreen({ onClose }: { onClose: () => void }) {
                     <Box>
                         <Text color={c.brand}>/config</Text>
                         <Text color={c.textMuted}>   set API key, model, base URL → </Text>
-                        <Text color={c.text}>.env</Text>
+                        <Text color={c.text}>~/.kob-cli/config.env</Text>
                     </Box>
                     <Box>
                         <Text color={c.brand}>/models</Text>
@@ -1659,7 +1659,7 @@ function HelpScreen({ onClose }: { onClose: () => void }) {
                     </Box>
                     <Box>
                         <Text color={c.brand}>/reset</Text>
-                        <Text color={c.textMuted}>     reset model to .env default</Text>
+                        <Text color={c.textMuted}>     reset model to global config default</Text>
                     </Box>
                     <Box>
                         <Text color={c.brand}>/exit</Text>
@@ -1781,14 +1781,13 @@ function CodeEngine() {
         }
     }, { isActive: !!pendingApproval });
 
-    // "First start" = no .env file at the project root. The user is running
-    // KOB CLI for the very first time (or in a fresh clone), so we surface
-    // the /config hint more prominently.
+    // "First start" = no global KOB config file exists yet. The user is
+    // running KOB CLI for the very first time, so we surface the /config hint
+    // more prominently.
     const isFirstStart = (() => {
         try {
             const fs = require('fs') as typeof import('fs');
-            const path = require('path') as typeof import('path');
-            return !fs.existsSync(path.join(process.cwd(), '.env'));
+            return !fs.existsSync(describeEnvPath());
         } catch {
             return false;
         }
@@ -1896,7 +1895,7 @@ function CodeEngine() {
                 showBanner('◆ session cleared');
                 return true;
             case 'reset': {
-                // Re-read the .env file to recover the original model id,
+                // Re-read the global config file to recover the original model id,
                 // and re-snapshot the config so the rest of the app reverts.
                 const envModelId = readEnvFile().KOB_MODEL_ID;
                 const newModel = formatV2Model('DeepSeek', envModelId);

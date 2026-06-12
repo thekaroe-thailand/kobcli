@@ -30,7 +30,9 @@ import {
     promptOpenFile, pickProject, promptProjectCreate, pickProjectToDelete,
 } from './ui/prompts.js';
 import { loadProjects, saveProjects, addProject, removeProject } from './core/projects.js';
+import { runUpgrade } from './core/upgrade.js';
 import { C, dim, disableMouse } from './ui/theme.js';
+import { ensureInteractiveStdin, restoreStdin, snapshotStdin, type StdinSnapshot } from './ui/tty.js';
 
 const KNOWN_COMMANDS = new Set([
     'chat', 'ask', 'plan', 'code', 'clear', 'newchat', 'reset', 'exit', 'quit',
@@ -46,30 +48,39 @@ interface LocalSearchState {
 class TurnIO {
     ac = new AbortController();
     spinner = new Spinner();
+    exitRequested = false;
     private listening = false;
+    private stdinSnapshot: StdinSnapshot | null = null;
+    private rawGuardTimer: ReturnType<typeof setInterval> | null = null;
     private handler = (chunk: Buffer) => {
         // Only react to a LONE Esc / Ctrl-C keypress. Mouse wheel and arrow
         // keys arrive as multi-byte escape sequences and must be ignored.
         if (chunk.length === 1 && chunk[0] === 0x1b) this.ac.abort();          // Esc
         else if (chunk.length === 1 && chunk[0] === 0x03) {
             this.disableEsc();
-            console.log('\nExiting...');
-            process.exit(130);
+            this.exitRequested = true;
+            this.ac.abort();
         } // Ctrl-C
     };
     enableEsc(): void {
         if (this.listening || !process.stdin.isTTY) return;
-        try { process.stdin.setRawMode?.(true); } catch { /* */ }
-        disableMouse();
-        process.stdin.resume();
+        this.stdinSnapshot = snapshotStdin(process.stdin);
+        ensureInteractiveStdin(process.stdin);
+        this.rawGuardTimer = setInterval(() => ensureInteractiveStdin(process.stdin), 250);
         process.stdin.on('data', this.handler);
         this.listening = true;
     }
     disableEsc(): void {
         if (!this.listening) return;
         process.stdin.off('data', this.handler);
-        try { process.stdin.setRawMode?.(false); } catch { /* */ }
-        process.stdin.pause();
+        if (this.rawGuardTimer) {
+            clearInterval(this.rawGuardTimer);
+            this.rawGuardTimer = null;
+        }
+        if (this.stdinSnapshot) {
+            restoreStdin(process.stdin, this.stdinSnapshot);
+            this.stdinSnapshot = null;
+        }
         this.listening = false;
     }
 }
@@ -146,6 +157,10 @@ export async function runRepl(version: string): Promise<void> {
         // ── normal agent turn ─────────────────────────────
         const turn = await runTurn(state, trimmed, cfg, (u) => { lastUndo = u; });
         state = turn.state;
+        if (turn.exitRequested) {
+            banner('See you next time! · แล้วเจอกันนะ', C.cyan);
+            break;
+        }
         if (turn.connectionError) {
             // Offer a one-key retry instead of forcing the user to retype.
             const hint = chalk.hex(C.amber)('  Press ') + chalk.bold('R') + chalk.hex(C.amber)(' to retry, any other key to continue.');
@@ -171,16 +186,18 @@ function waitForRetryKey(): Promise<boolean> {
     return new Promise((resolve) => {
         if (!process.stdin.isTTY) { resolve(false); return; }
         const stdin = process.stdin;
-        const previousRawMode = stdin.isRaw;
+        const stdinSnapshot = snapshotStdin(stdin);
+        let rawGuardTimer: ReturnType<typeof setInterval> | null = null;
         const onData = (chunk: Buffer) => {
             stdin.off('data', onData);
-            try { stdin.setRawMode?.(Boolean(previousRawMode)); } catch { /* */ }
+            if (rawGuardTimer) clearInterval(rawGuardTimer);
+            restoreStdin(stdin, stdinSnapshot);
             const s = chunk.toString('utf8');
             if (s === 'r' || s === 'R') resolve(true);
             else resolve(false);
         };
-        try { stdin.setRawMode?.(true); } catch { /* */ }
-        stdin.resume();
+        ensureInteractiveStdin(stdin);
+        rawGuardTimer = setInterval(() => ensureInteractiveStdin(stdin), 250);
         stdin.on('data', onData);
     });
 }
@@ -190,9 +207,9 @@ async function runTurn(
     input: string,
     cfg: ReturnType<typeof getConfig>,
     setUndo: (u: UndoEntry[]) => void,
-): Promise<{ state: EngineState; connectionError: boolean }> {
+): Promise<{ state: EngineState; connectionError: boolean; exitRequested?: boolean }> {
     const io = new TurnIO();
-    const showDiff = state.mode === 'code';
+    const showDiff = false; // User requested: ไม่ต้องเอาโค้ดที่แก้มาให้ดู บอกแค่ไฟล์ กับบรรทัด + - พอ
 
     // open the framed round (sets the rail colour for all the report* output)
     beginRound(state.mode, input, state.exchanges.length);
@@ -220,6 +237,10 @@ async function runTurn(
 
     io.spinner.stop();
     io.disableEsc();
+
+    if (io.exitRequested) {
+        return { state: result.state, connectionError: false, exitRequested: true };
+    }
 
     if (result.error && result.state === state) {
         errorBox(result.error);
@@ -460,10 +481,11 @@ async function handleCommand(
         }
 
         case 'upgrade': {
-            banner('Upgrading KOB CLI...', C.cyan);
-            const r = runShellCommand('npm i -g kob-cli@latest', process.cwd());
-            reportCommand(r);
-            if (r.exitCode === 0) {
+            const r = await runUpgrade();
+            if (r.visibleOutput.length > 0) {
+                for (const line of r.visibleOutput) console.log('  ' + line);
+            }
+            if (r.ok) {
                 banner('Successfully upgraded! Please restart KOB CLI to use the new version.', C.green);
             } else {
                 banner('Upgrade failed. Please try running "npm i -g kob-cli@latest" manually.', C.red);

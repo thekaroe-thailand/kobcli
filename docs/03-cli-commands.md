@@ -79,7 +79,7 @@ kob ask "Summarize src/core/engine.ts" --model openai/gpt-4o
 
 ## `kob config`
 
-Opens the interactive configuration editor for `.env.local`.
+Opens the interactive configuration editor for the global `~/.kob-cli/config.env` file.
 
 ### Behavior
 - loads current env values
@@ -102,7 +102,12 @@ Updates KOB CLI to the latest version.
 
 ### Behavior
 - Executes `npm i -g kob-cli@latest`
+- Shows a live progress bar while the install is running
+- Hides routine npm warning noise such as `npm warn cleanup` and funding notices
 - Prints success or failure feedback
+
+### Implementation note
+- The CLI entrypoint is ESM, so this command must use `import`ed Node APIs from `node:child_process`, not `require(...)`.
 
 ### Typical use
 ```bash

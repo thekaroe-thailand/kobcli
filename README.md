@@ -47,7 +47,7 @@ It is designed to feel like a disciplined pair programmer inside your terminal:
 # 1. Install globally from npm
 npm i -g kob-cli
 
-# 2. Configure — the program creates .env for you, just answer the prompts
+# 2. Configure — the program creates a global config file for you
 kob config
 #   API key : kob_xxx:token         (paste from https://www.kob-ai.dev)
 #   Model   : deepseek/deepseek-v4-flash   (or pick from /models)
@@ -57,7 +57,7 @@ kob config
 kob
 ```
 
-That's it. No git clone, no `bun install`, no manual `.env` editing.
+That's it. No git clone, no `bun install`, no manual config file editing.
 
 Inside the REPL, type a plain request — the agent does the rest.
 
@@ -116,6 +116,8 @@ You can easily upgrade KOB CLI to the latest version directly using:
 kob upgrade
 ```
 
+The built-in upgrader shows a live progress bar and suppresses routine npm warning noise such as funding notices and cleanup warnings. If npm returns a real error, KOB still prints it.
+
 Or manually via npm:
 
 ```bash
@@ -133,7 +135,7 @@ rm -rf ~/.kob-cli            # wipes persisted sessions
 
 ## ⚙️ Configuration
 
-You do **not** edit `.env` by hand. Run `kob config` (or `/config` from inside the REPL) and the program creates the file for you, pre-filled with the values you entered.
+You do **not** need to edit config by hand. Run `kob config` (or `/config` from inside the REPL) and the program creates a single global file for you at `~/.kob-cli/config.env`, pre-filled with the values you entered.
 
 ```bash
 kob config
@@ -152,7 +154,7 @@ kob config
   └  ✓ Configuration saved
 ```
 
-The form writes a project-local `.env` that looks like this — you only ever see it because you asked to look, you never need to touch it:
+The form writes one global config file shared across projects. It looks like this:
 
 ```env
 KOB_API_BASE_URL=https://www.kob-ai.dev
@@ -194,7 +196,7 @@ kob chat                  # same as above, explicit
 kob ask "…"               # one-shot question, no REPL
 kob ask "…" -m gpt-4o     # override model for one request
 kob models                # list available models from backend
-kob config                # edit .env interactively
+kob config                # edit global KOB settings
 kob --version             # show version
 kob --help                # full CLI help
 ```
@@ -221,7 +223,7 @@ Type `/` to open the autocomplete menu, or type the command directly:
 | `/plan`         | Switch to Plan mode                                                   |
 | `/code`         | Switch to Code mode                                                   |
 | `/models`       | Pick a model from the live backend catalog                            |
-| `/config`       | Edit `.env` interactively                                             |
+| `/config`       | Edit global KOB settings                                              |
 | `/git`          | Branch + dirty file count + first 30 lines of `git status`            |
 | `/diff`         | Show the file changes from the last turn                              |
 | `/undo`         | Revert every file mutation from the last turn                         |
@@ -335,7 +337,7 @@ src/
 │   ├── engine.ts         agentic multi-round loop
 │   ├── modes.ts          chat / ask / plan / code prompts
 │   ├── config.ts         env loading + validation
-│   ├── env-file.ts       read/write .env.local (comment-preserving)
+│   ├── env-file.ts       read/write ~/.kob-cli/config.env (comment-preserving)
 │   ├── history.ts        per-project session persistence
 │   └── types.ts
 ├── tools/

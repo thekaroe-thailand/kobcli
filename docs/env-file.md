@@ -23,11 +23,11 @@ aliases:
 
 > **Source file:** `src/utils/env-file.ts`
 
-The only file in the project that reads from / writes to the .env file directly (not `process.env`). Used by the `/config` form.
+The only file in the project that reads from / writes to the KOB config file directly (not `process.env`). Used by the `/config` form.
 
-- `getEnvPath()` — `.env.local` > `.env` > create `.env.local`.
+- `getEnvPath()` — `~/.kob-cli/config.env` first, then legacy local `.env.local` / `.env`.
 - `readEnvFile()` — preserves comments, returns `Record<string, string>`.
-- `writeEnvFile(updates, comments?)` — replaces existing keys, appends new ones, seeds from `.env.example` if the file doesn't exist.
+- `writeEnvFile(updates, comments?)` — replaces existing keys, appends new ones, and migrates from a legacy local env file when needed.
 - `describeEnvPath()` — human-readable path for the UI.
 
 ## See also

@@ -9,6 +9,7 @@ import { getConfig } from '../core/config.js';
 import { readEnvFile, writeEnvFile, describeEnvPath } from '../core/env-file.js';
 import { formatModel } from '../core/engine.js';
 import { C, dim, disableMouse, sanitizeInput, visibleLength, contentWidth } from './theme.js';
+import { ensureInteractiveStdin, restoreStdin, snapshotStdin } from './tty.js';
 import chalk from 'chalk';
 
 export { spinner, isCancel } from '@clack/prompts';
@@ -51,7 +52,6 @@ type SelectOption = {
 };
 
 const INPUT_CURSOR = chalk.hex(C.cyan).bold('_');
-const INPUT_CURSOR_CHAR = '_';
 
 const SLASH_OPTIONS = [
     { value: '/chat', label: '/chat     Open conversation' },
@@ -59,7 +59,7 @@ const SLASH_OPTIONS = [
     { value: '/plan', label: '/plan     Architect a solution' },
     { value: '/code', label: '/code     Build & edit autonomously' },
     { value: '/models', label: '/models   Switch AI model' },
-    { value: '/config', label: '/config   Edit .env settings' },
+    { value: '/config', label: '/config   Edit global KOB settings' },
     { value: '/diff', label: '/diff     Show last changes' },
     { value: '/undo', label: '/undo     Revert last changes' },
     { value: '/git', label: '/git      Repo status' },
@@ -89,12 +89,13 @@ export async function promptInput(message: string): Promise<string | null> {
     return await new Promise<string | null>((resolve) => {
         const stdin = process.stdin;
         const stdout = process.stdout;
-        const previousRawMode = stdin.isRaw;
+        const stdinSnapshot = snapshotStdin(stdin);
         let value = '';
         let cursor = 0;
         let cursorVisible = true;
         let settled = false;
         let blinkTimer: NodeJS.Timeout | undefined;
+        let rawGuardTimer: NodeJS.Timeout | undefined;
         let renderedLines = 1;
         const promptHistory = loadPromptHistory();
         let historyIndex = -1;
@@ -161,8 +162,11 @@ export async function promptInput(message: string): Promise<string | null> {
         };
 
         readline.emitKeypressEvents(stdin);
-        stdin.setRawMode?.(true);
-        stdin.resume();
+        ensureInteractiveStdin(stdin);
+        // On Windows terminals, switching focus away and clicking back can
+        // silently drop raw mode. Reassert it while the prompt is active so
+        // typing resumes immediately after focus returns.
+        rawGuardTimer = setInterval(() => ensureInteractiveStdin(stdin), 250);
         stdout.write('\x1b[?25l');
 
         const renderValue = () => {
@@ -222,7 +226,8 @@ export async function promptInput(message: string): Promise<string | null> {
             settled = true;
             stdin.off('keypress', onKeypress);
             if (blinkTimer) clearInterval(blinkTimer);
-            stdin.setRawMode?.(Boolean(previousRawMode));
+            if (rawGuardTimer) clearInterval(rawGuardTimer);
+            restoreStdin(stdin, stdinSnapshot);
             stdout.write('\x1b[?25h');
             if (newline) {
                 // Move cursor below any wrapped prompt rows before the next
@@ -238,9 +243,7 @@ export async function promptInput(message: string): Promise<string | null> {
 
         const onKeypress = async (sequence: string, key: { name?: string; ctrl?: boolean }) => {
             if (key.ctrl && key.name === 'c') {
-                finish(null, false);
-                console.log('\nExiting...');
-                process.exit(130);
+                finish(null);
                 return;
             }
             if (key.ctrl && key.name === 'a') {
@@ -516,247 +519,27 @@ export async function pickSearchFile(paths: string[]): Promise<string | null> {
     return result as string;
 }
 
-function filterOptions(options: SelectOption[], query: string): SelectOption[] {
-    const q = query.trim().toLowerCase();
-    if (!q) return options;
-    const exact: SelectOption[] = [];
-    const prefix: SelectOption[] = [];
-    const partial: SelectOption[] = [];
-
-    for (const option of options) {
-        const value = option.value.toLowerCase();
-        const label = option.label.toLowerCase();
-        const hint = (option.hint || '').toLowerCase();
-        if (value === q || label === q) exact.push(option);
-        else if (value.startsWith(q) || label.startsWith(q) || hint.startsWith(q)) prefix.push(option);
-        else if (value.includes(q) || label.includes(q) || hint.includes(q)) partial.push(option);
-    }
-
-    return [...exact, ...prefix, ...partial];
-}
-
 async function pickSearchableOption(
     message: string,
     options: SelectOption[],
     current?: string,
 ): Promise<string | null> {
-    if (!process.stdin.isTTY || !process.stdout.isTTY) {
-        let query = '';
-        while (true) {
-            const search = await text({
-                message: `${message} search`,
-                placeholder: 'type to filter, leave blank to show all',
-                initialValue: query,
-            });
-            if (isCancel(search)) return null;
-
-            query = sanitizeInput((search as string) ?? '');
-            const filtered = filterOptions(options, query);
-            if (filtered.length === 0) {
-                console.log('  ' + chalk.hex(C.amber)('No matches found. Try another search.'));
-                continue;
-            }
-            const result = await select({
-                message: query ? `${message} (${filtered.length} matches)` : message,
-                options: filtered.slice(0, 50),
-                initialValue: current,
-                maxItems: 12,
-            });
-            if (isCancel(result)) return null;
-            return result as string;
-        }
-    }
-
-    return await new Promise<string | null>((resolve) => {
-        const stdin = process.stdin;
-        const stdout = process.stdout;
-        const previousRawMode = stdin.isRaw;
-        let query = '';
-        let cursor = 0;
-        let cursorVisible = true;
-        let renderedLines = 0;
-        let settled = false;
-        let blinkTimer: NodeJS.Timeout | undefined;
-        let activeIndex = 0;
-        let initialPositionSeeded = false;
-
-        const renderInlineValue = () => {
-            const before = query.slice(0, cursor);
-            const currentChar = query[cursor];
-            const after = query.slice(cursor + 1);
-            if (!cursorVisible) return query || ' ';
-            if (cursor >= query.length) return `${before}${INPUT_CURSOR}`;
-            return `${before}${chalk.hex(C.cyan).underline(currentChar)}${after}`;
-        };
-
-        const getFiltered = () => filterOptions(options, query);
-
-        const syncActiveIndex = () => {
-            const filtered = getFiltered();
-            if (filtered.length === 0) {
-                activeIndex = 0;
-                return filtered;
-            }
-            // Only auto-select current model on first render, not on every render
-            if (!initialPositionSeeded && !query.trim() && current) {
-                const preferred = filtered.findIndex((option) => option.value === current);
-                if (preferred >= 0) activeIndex = preferred;
-                initialPositionSeeded = true;
-            }
-            activeIndex = Math.max(0, Math.min(activeIndex, filtered.length - 1));
-            return filtered;
-        };
-
-        const render = () => {
-            const filtered = syncActiveIndex();
-            const start = Math.min(
-                Math.max(0, activeIndex - 4),
-                Math.max(0, filtered.length - 10),
-            );
-            const visible = filtered.slice(start, start + 10);
-            const activeVisibleIndex = activeIndex - start;
-            const lines: string[] = [];
-            lines.push(`  ${chalk.bold(message)}`);
-            lines.push(`  ${chalk.hex(C.blue)('›')} ${dim('search')} ${renderInlineValue()}`);
-
-            if (filtered.length === 0) {
-                lines.push(`  ${chalk.hex(C.amber)('No matching models')}`);
-            } else {
-                lines.push(`  ${dim(`${filtered.length} matches`)}`);
-                for (let i = 0; i < visible.length; i++) {
-                    const option = visible[i]!;
-                    const active = i === activeVisibleIndex;
-                    const marker = active ? chalk.hex(C.green)('❯') : dim('·');
-                    const label = active ? chalk.bold(option.label) : option.label;
-                    const hint = option.hint ? dim(`  ${option.hint}`) : '';
-                    lines.push(`  ${marker} ${label}${hint}`);
-                }
-                if (filtered.length > visible.length) lines.push(`  ${dim(`… ${activeIndex + 1}/${filtered.length}`)}`);
-            }
-
-            if (renderedLines > 0) {
-                readline.moveCursor(stdout, 0, -(renderedLines - 1));
-                readline.cursorTo(stdout, 0);
-            }
-            readline.clearScreenDown(stdout);
-            stdout.write(lines.join('\n'));
-            renderedLines = lines.length;
-        };
-
-        const cleanup = (newline = true) => {
-            if (settled) return;
-            settled = true;
-            stdin.off('keypress', onKeypress);
-            if (blinkTimer) clearInterval(blinkTimer);
-            stdin.setRawMode?.(Boolean(previousRawMode));
-            stdout.write('\x1b[?25h');
-            if (newline) stdout.write('\n');
-        };
-
-        const onKeypress = (sequence: string, key: { name?: string; ctrl?: boolean }) => {
-            if (key.ctrl && key.name === 'c') {
-                cleanup();
-                resolve(null);
-                return;
-            }
-            if (key.name === 'escape') {
-                cleanup();
-                resolve(null);
-                return;
-            }
-            if (key.ctrl && key.name === 'a') {
-                cursor = 0;
-                cursorVisible = true;
-                render();
-                return;
-            }
-            if (key.ctrl && key.name === 'e') {
-                cursor = query.length;
-                cursorVisible = true;
-                render();
-                return;
-            }
-            if (key.name === 'left') {
-                cursor = Math.max(0, cursor - 1);
-                cursorVisible = true;
-                render();
-                return;
-            }
-            if (key.name === 'right') {
-                cursor = Math.min(query.length, cursor + 1);
-                cursorVisible = true;
-                render();
-                return;
-            }
-            if (key.name === 'home') {
-                cursor = 0;
-                cursorVisible = true;
-                render();
-                return;
-            }
-            if (key.name === 'end') {
-                cursor = query.length;
-                cursorVisible = true;
-                render();
-                return;
-            }
-            if (key.name === 'up') {
-                const filtered = getFiltered();
-                if (filtered.length > 0) activeIndex = Math.max(0, activeIndex - 1);
-                cursorVisible = true;
-                render();
-                return;
-            }
-            if (key.name === 'down') {
-                const filtered = getFiltered();
-                if (filtered.length > 0) activeIndex = Math.min(filtered.length - 1, activeIndex + 1);
-                cursorVisible = true;
-                render();
-                return;
-            }
-            if (key.name === 'backspace') {
-                if (cursor > 0) {
-                    query = query.slice(0, cursor - 1) + query.slice(cursor);
-                    cursor -= 1;
-                    activeIndex = 0;
-                }
-                cursorVisible = true;
-                render();
-                return;
-            }
-            if (key.name === 'delete') {
-                if (cursor < query.length) {
-                    query = query.slice(0, cursor) + query.slice(cursor + 1);
-                    activeIndex = 0;
-                }
-                cursorVisible = true;
-                render();
-                return;
-            }
-            if (key.name === 'return' || key.name === 'enter') {
-                const filtered = getFiltered();
-                const picked = filtered[Math.min(activeIndex, Math.max(filtered.length - 1, 0))];
-                cleanup();
-                resolve(picked?.value ?? null);
-                return;
-            }
-            if (!sequence || sequence.startsWith('\u001b')) return;
-
-            query = query.slice(0, cursor) + sequence + query.slice(cursor);
-            cursor += sequence.length;
-            activeIndex = 0;
-            cursorVisible = true;
-            render();
-        };
-
-        readline.emitKeypressEvents(stdin);
-        stdin.setRawMode?.(true);
-        stdin.resume();
-        stdout.write('\x1b[?25l');
-        stdin.on('keypress', onKeypress);
-        // Static cursor — see promptInput for rationale.
-        render();
+    const result = await autocomplete({
+        message,
+        options,
+        initialValue: current,
+        maxItems: 12,
     });
+    if (isCancel(result)) return null;
+    return result as string;
+}
+
+function formatPricePer1M(price?: number): string {
+    if (typeof price !== 'number' || Number.isNaN(price)) return 'n/a';
+    if (price === 0) return '$0';
+    if (price >= 1) return `$${price.toFixed(2)}`;
+    if (price >= 0.01) return `$${price.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')}`;
+    return `$${price.toFixed(4).replace(/0+$/, '').replace(/\.$/, '')}`;
 }
 
 export async function confirmCommand(cmd: string, kind: 'mutating' | 'dangerous'): Promise<boolean> {
@@ -776,7 +559,14 @@ export async function pickModel(current: string): Promise<string | null> {
     if (!cfg) return null;
     const s = spinner();
     s.start('Fetching models');
-    let models: { id: string; display_name?: string; displayName?: string; provider?: string }[] = [];
+    let models: {
+        id: string;
+        display_name?: string;
+        displayName?: string;
+        provider?: string;
+        inputPricePer1M?: number;
+        outputPricePer1M?: number;
+    }[] = [];
     try {
         models = await new KobApiClient(cfg).listModels();
         s.stop(`Found ${models.length} models`);
@@ -790,11 +580,19 @@ export async function pickModel(current: string): Promise<string | null> {
         return formatModel(sanitizeInput(manual as string));
     }
 
-    const options = models.map(m => ({
-        value: m.id,
-        label: (m.display_name || m.displayName || m.id),
-        hint: m.provider,
-    }));
+    const options = models.map(m => {
+        const displayName = m.display_name || m.displayName || m.id;
+        const priceLabel = `in ${formatPricePer1M(m.inputPricePer1M)}/1M | out ${formatPricePer1M(m.outputPricePer1M)}/1M`;
+        return {
+            value: m.id,
+            label: [
+                displayName === m.id ? m.id : `${displayName} (${m.id})`,
+                m.provider ? `[${m.provider}]` : '',
+                priceLabel,
+            ].filter(Boolean).join('  '),
+            hint: undefined,
+        };
+    });
     const result = options.length > 12
         ? await pickSearchableOption('Select AI model', options, current)
         : await select({ message: 'Select AI model', options, initialValue: current, maxItems: 12 });

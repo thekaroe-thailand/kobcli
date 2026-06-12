@@ -38,7 +38,7 @@ The current product surface is intentionally compact:
 - `kob` or `kob chat` starts the interactive REPL
 - `kob ask <prompt...>` sends a one-off prompt
 - `kob models` lists available models from the API
-- `kob config` edits `.env.local`
+- `kob config` edits `~/.kob-cli/config.env`
 - the REPL itself supports mode switching, slash commands, direct shell execution, search/replace helpers, undo, diff, and session resume
 
 This is not the same architecture described by some older docs in this folder that refer to an Ink full-screen TUI. The shipped runtime is centered on `src/repl.ts` and `src/core/engine.ts`.

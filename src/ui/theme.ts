@@ -1,6 +1,7 @@
 // THEME - colour palette + tiny helpers
 
 import chalk from 'chalk';
+import stringWidth from 'string-width';
 
 export const C = {
     cyan: '#22d3ee',
@@ -41,7 +42,7 @@ export function rule(width = termWidth(), char = '─'): string {
 }
 
 export function visibleLength(s: string): number {
-    return s.replace(/\x1b\[[0-9;]*m/g, '').length;
+    return stringWidth(s);
 }
 
 export function padEndVisible(s: string, width: number): string {

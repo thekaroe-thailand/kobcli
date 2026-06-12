@@ -3,34 +3,38 @@
 // ════════════════════════════════════════════════════════════
 
 import type { CliConfig } from './types.js';
-import { readEnvFile } from './env-file.js';
+import { describeEnvPath, readEnvFile } from './env-file.js';
 
 /**
- * Load .env.local / .env into process.env (Bun does this automatically, but
- * when running under node/tsx we must do it ourselves). Existing process.env
- * values win so real shell exports are not clobbered.
+ * Load the KOB config file into process.env. We intentionally mirror the
+ * global config here so project-local dotenv files do not shadow it.
  */
 export function loadEnv(): void {
     const fromFile = readEnvFile();
     for (const [k, v] of Object.entries(fromFile)) {
-        if (process.env[k] === undefined) process.env[k] = v;
+        process.env[k] = v;
     }
 }
 
 export function getConfig(options?: { quiet?: boolean }): CliConfig | null {
-    let baseUrl = process.env.KOB_API_BASE_URL || 'https://www.kob-ai.dev';
+    const fileEnv = readEnvFile();
+    let baseUrl = fileEnv.KOB_API_BASE_URL || process.env.KOB_API_BASE_URL || 'https://www.kob-ai.dev';
     // strip trailing /v1, /v2 subpaths and trailing slashes — endpoints are absolute
     baseUrl = baseUrl.replace(/\/v\d+\/?$/, '').replace(/\/+$/, '');
 
-    const rawKey = process.env.KOB_API_KEY || '';
-    const modelId = process.env.KOB_MODEL_ID;
-    const maxTokens = Number(process.env.KOB_MAX_TOKENS) || 16384;
-    const autoApproveReadonly = (process.env.KOB_AUTO_APPROVE_READONLY ?? 'true').toLowerCase() !== 'false';
+    const rawKey = fileEnv.KOB_API_KEY || process.env.KOB_API_KEY || '';
+    const modelId = fileEnv.KOB_MODEL_ID || process.env.KOB_MODEL_ID;
+    const maxTokens = Number(fileEnv.KOB_MAX_TOKENS || process.env.KOB_MAX_TOKENS) || 16384;
+    const autoApproveReadonly = (
+        fileEnv.KOB_AUTO_APPROVE_READONLY
+        || process.env.KOB_AUTO_APPROVE_READONLY
+        || 'true'
+    ).toLowerCase() !== 'false';
 
     if (!rawKey) {
         if (!options?.quiet) {
             console.error('\n  ✗ KOB_API_KEY is not set.');
-            console.error('    Add it to .env.local or run:  kob config\n');
+            console.error(`    Configure ${describeEnvPath()} or run:  kob config\n`);
         }
         return null;
     }

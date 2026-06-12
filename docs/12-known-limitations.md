@@ -80,7 +80,7 @@ The user runs `npm i -g kob-cli` to upgrade. There's no in-app "new version avai
 
 ## No telemetry
 
-Zero analytics, zero network calls outside of explicit API requests. The only side-effects of running `kob` are: the API call, the writes to `~/.kob-cli/images/` for pasted images, and (when `/config` is used) writes to `.env.local`.
+Zero analytics, zero network calls outside of explicit API requests. The only side-effects of running `kob` are: the API call, the writes to `~/.kob-cli/images/` for pasted images, and (when `/config` is used) writes to `~/.kob-cli/config.env`.
 
 ## See also
 

@@ -5,6 +5,7 @@ dist/
 # local secrets
 .env
 .env.local
+.kob/
 
 # sandbox / scratch test artifacts
 *.mjs

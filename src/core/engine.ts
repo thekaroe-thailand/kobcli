@@ -120,6 +120,11 @@ export async function handleSubmit(
 
             let content = '';
             const streamLive = state.mode !== 'code';
+            
+            // Regex to match an incomplete tool block or fenced code block at the end of the stream
+            const toolRe = /<tool:(str_replace|write_file|read_file)>[\s\S]*?(?:<path>\s*(.*?)\s*<\/path>)?([\s\S]*)$/;
+            const codeBlockRe = /```[a-z]*[\s:]([\w./\\-]+)\s*\n([\s\S]*)$/i;
+
             try {
                 for await (const chunk of client.chatStream(state.model, messages, {
                     temperature: state.mode === 'code' ? 0.1 : 0.5,
@@ -131,7 +136,32 @@ export async function handleSubmit(
                     if (delta) {
                         content += delta;
                         outTokens += countTokens(delta);
-                        if (streamLive) hooks.onToken?.(delta);
+                        if (streamLive) {
+                            hooks.onToken?.(delta);
+                        } else {
+                            // Live update the spinner with line counts during Code mode
+                            const toolMatch = content.match(toolRe);
+                            if (toolMatch) {
+                                const toolName = toolMatch[1];
+                                const path = toolMatch[2] || '...';
+                                if (toolName === 'read_file') {
+                                    hooks.onProgress?.(`Reading ${path}`);
+                                } else {
+                                    const lines = (toolMatch[3] || '').split('\n').length;
+                                    const action = toolName === 'str_replace' ? 'Editing' : 'Writing';
+                                    hooks.onProgress?.(`${action} ${path} (+${lines})`);
+                                }
+                            } else {
+                                const blockMatch = content.match(codeBlockRe);
+                                if (blockMatch) {
+                                    const path = blockMatch[1] || '...';
+                                    const lines = (blockMatch[2] || '').split('\n').length;
+                                    hooks.onProgress?.(`Writing ${path} (+${lines})`);
+                                } else {
+                                    hooks.onProgress?.(label);
+                                }
+                            }
+                        }
                     }
                 }
             } catch (e) {

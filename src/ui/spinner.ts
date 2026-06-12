@@ -35,8 +35,14 @@ export class Spinner {
         this.frame = (this.frame + 1) % FRAMES.length;
         const f = chalk.hex(C.cyan)(FRAMES[this.frame]!);
         const elapsed = ((Date.now() - this.t0) / 1000).toFixed(1);
+        
+        // Add dot animation to the end of the text
+        const baseText = this.text.replace(/\.+$/, '');
+        const dots = ['.', '..', '...'][Math.floor(this.frame / 3) % 3];
+        const displayText = `${baseText}${dots}`;
+
         // overwrite in place (\r + content + clear-to-EOL) — no full-line erase, no flicker
-        process.stdout.write(`\r  ${f} ${this.text}${dim(' · ' + elapsed + 's · esc to stop')}\x1b[K`);
+        process.stdout.write(`\r  ${f} ${displayText}${dim(' · ' + elapsed + 's · esc to stop')}\x1b[K`);
     }
 
     /** Print a permanent line above the spinner without flicker. */

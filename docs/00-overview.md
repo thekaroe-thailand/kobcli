@@ -81,7 +81,7 @@ The default base URL is `https://www.kob-ai.dev`, with version suffixes stripped
 
 ## Configuration model
 
-Configuration is read from environment variables, primarily through `.env.local` or `.env`.
+Configuration is read from the shared `~/.kob-cli/config.env` file, with legacy project-local `.env.local` / `.env` used only as a migration fallback.
 
 Important keys:
 
