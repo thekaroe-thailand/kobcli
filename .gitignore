@@ -12,3 +12,6 @@ dist/
 .fuse_hidden*
 kob
 kob.exe
+
+.kob
+kob-cli.exe
