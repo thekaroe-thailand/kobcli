@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from 'node:child_process';
+import readline from 'node:readline';
 import chalk from 'chalk';
 import { C } from '../ui/theme.js';
 
@@ -31,12 +32,17 @@ function renderProgress(startMs: number, fromVersion: string, toVersion: string,
     const label = fromVersion && fromVersion !== '?' && toVersion && toVersion !== fromVersion
         ? `Upgrading KOB CLI ${chalk.dim('v' + fromVersion)} ${chalk.dim('→')} ${chalk.hex(C.green)('v' + toVersion)}`
         : `Upgrading KOB CLI`;
-    const line = `\r  ${chalk.hex(C.cyan)('[' + bar + ']')} ${chalk.hex(C.cyan)(pctStr + '%')} ${label}${chalk.dim(` · ${elapsedStr}s`)}`;
-    process.stdout.write(line + '\x1b[K');
+    const line = `  ${chalk.hex(C.cyan)('[' + bar + ']')} ${chalk.hex(C.cyan)(pctStr + '%')} ${label}${chalk.dim(` · ${elapsedStr}s`)}`;
+    readline.cursorTo(process.stdout, 0);
+    readline.clearLine(process.stdout, 0);
+    process.stdout.write(line);
 }
 
 function clearProgress(): void {
-    if (process.stdout.isTTY) process.stdout.write('\r\x1b[K');
+    if (process.stdout.isTTY) {
+        readline.cursorTo(process.stdout, 0);
+        readline.clearLine(process.stdout, 0);
+    }
 }
 
 function flushBuffer(buffer: string, lines: string[]): string {

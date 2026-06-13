@@ -1,5 +1,6 @@
 // SPINNER - single-line spinner that can interleave log lines
 
+import readline from 'node:readline';
 import chalk from 'chalk';
 import { C, dim } from './theme.js';
 
@@ -27,7 +28,10 @@ export class Spinner {
     }
 
     private clearLine(): void {
-        if (process.stdout.isTTY) process.stdout.write('\r\x1b[K');
+        if (process.stdout.isTTY) {
+            readline.cursorTo(process.stdout, 0);
+            readline.clearLine(process.stdout, 0);
+        }
     }
 
     private render(): void {
@@ -41,8 +45,8 @@ export class Spinner {
         const dots = ['.', '..', '...'][Math.floor(this.frame / 3) % 3];
         const displayText = `${baseText}${dots}`;
 
-        // overwrite in place (\r + content + clear-to-EOL) — no full-line erase, no flicker
-        process.stdout.write(`\r  ${f} ${displayText}${dim(' · ' + elapsed + 's · esc to stop')}\x1b[K`);
+        this.clearLine();
+        process.stdout.write(`  ${f} ${displayText}${dim(' · ' + elapsed + 's · esc to stop')}`);
     }
 
     /** Print a permanent line above the spinner without flicker. */
