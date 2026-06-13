@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import chalk from 'chalk';
 import { C } from '../ui/theme.js';
 
@@ -16,11 +16,10 @@ function shouldHideLine(line: string): boolean {
     return HIDDEN_LINE_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
-function renderProgress(startMs: number, done: boolean = false): void {
+function renderProgress(startMs: number, fromVersion: string, toVersion: string, done: boolean = false): void {
     if (!process.stdout.isTTY) return;
     const width = 20;
     const elapsed = Date.now() - startMs;
-    // Simulate progress: fill up to 95% over 30s, then hold; jump to 100% when done.
     const rawPct = done ? 100 : Math.min(95, Math.round((elapsed / 30_000) * 95));
     const filled = Math.round((rawPct / 100) * width);
     let bar = '';
@@ -29,7 +28,10 @@ function renderProgress(startMs: number, done: boolean = false): void {
     }
     const elapsedStr = (elapsed / 1000).toFixed(1);
     const pctStr = String(rawPct).padStart(3);
-    const line = `\r  ${chalk.hex(C.cyan)('[' + bar + ']')} ${chalk.hex(C.cyan)(pctStr + '%')} ${chalk.hex(C.cyan)('Upgrading KOB CLI')}${chalk.dim(` · ${elapsedStr}s`)}`;
+    const label = fromVersion && fromVersion !== '?' && toVersion && toVersion !== fromVersion
+        ? `Upgrading KOB CLI ${chalk.dim('v' + fromVersion)} ${chalk.dim('→')} ${chalk.hex(C.green)('v' + toVersion)}`
+        : `Upgrading KOB CLI`;
+    const line = `\r  ${chalk.hex(C.cyan)('[' + bar + ']')} ${chalk.hex(C.cyan)(pctStr + '%')} ${label}${chalk.dim(` · ${elapsedStr}s`)}`;
     process.stdout.write(line + '\x1b[K');
 }
 
@@ -50,9 +52,42 @@ export interface UpgradeResult {
     ok: boolean;
     exitCode: number;
     visibleOutput: string[];
+    fromVersion: string;
+    toVersion: string;
+}
+
+function getLatestVersion(): string {
+    try {
+        const c = spawnSync('npm', ['view', 'kob-cli', 'version', '--json'], {
+            shell: process.platform === 'win32',
+            encoding: 'utf8',
+            timeout: 5000,
+        });
+        if (c.status === 0 && c.stdout) return (JSON.parse(c.stdout.trim()) as string);
+    } catch { /* offline */ }
+    return 'latest';
+}
+
+function getCurrentVersion(): string {
+    try {
+        const c = spawnSync('npm', ['ls', '-g', 'kob-cli', '--depth=0', '--json'], {
+            shell: process.platform === 'win32',
+            encoding: 'utf8',
+            timeout: 5000,
+        });
+        if (c.status === 0 && c.stdout) {
+            const d = JSON.parse(c.stdout);
+            const v = d?.dependencies?.['kob-cli']?.version;
+            if (v) return v;
+        }
+    } catch { /* not global */ }
+    return '?';
 }
 
 export async function runUpgrade(): Promise<UpgradeResult> {
+    const fromVersion = getCurrentVersion();
+    const toVersion = getLatestVersion();
+
     const child = spawn(
         'npm',
         ['i', '-g', 'kob-cli@latest', '--no-fund', '--no-audit', '--loglevel=error', '--progress=false'],
@@ -67,7 +102,7 @@ export async function runUpgrade(): Promise<UpgradeResult> {
     let stderrBuffer = '';
     const startMs = Date.now();
     const timer = setInterval(() => {
-        renderProgress(startMs);
+        renderProgress(startMs, fromVersion, toVersion);
     }, 90);
 
     child.stdout?.setEncoding('utf8');
@@ -87,16 +122,16 @@ export async function runUpgrade(): Promise<UpgradeResult> {
         child.on('error', (error) => {
             clearInterval(timer);
             clearProgress();
-            resolve({ ok: false, exitCode: -1, visibleOutput: [error.message] });
+            resolve({ ok: false, exitCode: -1, visibleOutput: [error.message], fromVersion, toVersion });
         });
 
         child.on('close', (code) => {
             clearInterval(timer);
             if (stdoutBuffer && !shouldHideLine(stdoutBuffer)) visibleOutput.push(stdoutBuffer);
             if (stderrBuffer && !shouldHideLine(stderrBuffer)) visibleOutput.push(stderrBuffer);
-            renderProgress(startMs, true);
+            renderProgress(startMs, fromVersion, toVersion, true);
             clearProgress();
-            resolve({ ok: code === 0, exitCode: code ?? -1, visibleOutput });
+            resolve({ ok: code === 0, exitCode: code ?? -1, visibleOutput, fromVersion, toVersion });
         });
     });
 }

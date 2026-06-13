@@ -534,7 +534,8 @@ async function handleCommand(
                 for (const line of r.visibleOutput) console.log('  ' + line);
             }
             if (r.ok) {
-                banner('Successfully upgraded! Please restart KOB CLI to use the new version.', C.green);
+                const ver = r.fromVersion && r.fromVersion !== '?' ? ` (v${r.fromVersion} → v${r.toVersion})` : '';
+                banner(`Successfully upgraded!${ver} Please restart KOB CLI to use the new version.`, C.green);
             } else {
                 banner('Upgrade failed. Please try running "npm i -g kob-cli@latest" manually.', C.red);
             }

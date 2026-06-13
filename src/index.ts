@@ -95,7 +95,8 @@ program
             console.log(r.visibleOutput.map((line) => '  ' + line).join('\n'));
         }
         if (r.ok) {
-            console.log(chalk.hex(C.green)('\n  Successfully upgraded!'));
+            const ver = r.fromVersion && r.fromVersion !== '?' ? ` (v${r.fromVersion} → v${r.toVersion})` : '';
+            console.log(chalk.hex(C.green)(`\n  Successfully upgraded!${ver}`));
         } else {
             console.log(chalk.hex(C.red)('\n  Upgrade failed.'));
             process.exitCode = r.exitCode || 1;
