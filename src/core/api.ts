@@ -62,6 +62,7 @@ export class KobApiClient {
         messages: ChatMessage[],
         options?: { temperature?: number; max_tokens?: number; system_prompt?: string; signal?: AbortSignal; reasoning?: boolean },
     ): AsyncGenerator<ChatCompletionChunk> {
+        const chatPath = process.env.KOB_API_CHAT_PATH || '/api/v2/chat/completions';
         const maxRetries = 5;
         let attempt = 0;
 
@@ -78,7 +79,7 @@ export class KobApiClient {
 
         while (attempt < maxRetries) {
             try {
-                const url = `${this.baseUrl}/api/v2/chat/completions`;
+                const url = `${this.baseUrl}${chatPath}`;
                 const body: Record<string, unknown> = {
                     model,
                     messages: [...messages],
@@ -104,7 +105,7 @@ export class KobApiClient {
 
                 if (!response.ok) {
                     const text = await response.text();
-                    let msg = `Request failed (HTTP ${response.status})`;
+                    let msg = `${url}: HTTP ${response.status}`;
                     try { const d = JSON.parse(text); msg = d.error?.message || d.message || msg; } catch { /* keep */ }
                     throw new ApiError(msg, response.status);
                 }
@@ -155,10 +156,13 @@ export class KobApiClient {
 
     /** Fetch the list of available models. Tries a couple of known shapes. */
     async listModels(): Promise<ModelInfo[]> {
-        const tryEndpoints: { method: 'POST' | 'GET'; path: string }[] = [
-            { method: 'POST', path: '/api/models' },
-            { method: 'GET', path: '/api/v2/models' },
-        ];
+        const modelsPath = process.env.KOB_API_MODELS_PATH;
+        const tryEndpoints: { method: 'POST' | 'GET'; path: string }[] = modelsPath
+            ? [{ method: 'POST', path: modelsPath }]
+            : [
+                { method: 'POST', path: '/api/models' },
+                { method: 'GET', path: '/api/v2/models' },
+            ];
         let lastErr: unknown;
         for (const ep of tryEndpoints) {
             try {
