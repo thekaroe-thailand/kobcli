@@ -606,7 +606,8 @@ export async function pickModel(current: string): Promise<string | null> {
     if (options.length <= 12) {
         const picked = await select({ message: 'Select AI model', options, initialValue: current, maxItems: 12 });
         if (isCancel(picked)) return null;
-        return formatModel(picked as string);
+        // Model IDs from API are already complete — don't add prefix
+        return picked as string;
     }
 
     // For large model lists, show models with left rail and real-time search.
@@ -726,7 +727,8 @@ async function pickModelWithSearch(options: SelectOption[], current: string): Pr
             const clampedIndex = Math.min(selectedIndex, filtered.length - 1);
             const chosen = filtered[clampedIndex];
             if (chosen) {
-                finish(formatModel(chosen.value));
+                // Model IDs from API are already complete — don't add prefix
+                finish(chosen.value);
             }
             return;
         }
