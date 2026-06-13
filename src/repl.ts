@@ -177,6 +177,7 @@ export async function runRepl(version: string): Promise<void> {
             }
         }
     }
+    process.exit(0);
 }
 
 function isRetriableErrorMessage(msg: string | undefined): boolean {
