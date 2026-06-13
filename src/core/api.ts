@@ -190,7 +190,7 @@ export class KobApiClient {
                         : undefined,
                 });
                 const text = await res.text();
-                if (!res.ok) { lastErr = new ApiError(text.slice(0, 200), res.status); continue; }
+                if (!res.ok) { lastErr = new ApiError(`${this.baseUrl}${ep.path}: HTTP ${res.status} - ${text.slice(0, 200)}`, res.status); continue; }
                 const data = JSON.parse(text);
                 const models = normalizeModels(data);
                 if (models.length) return models;
