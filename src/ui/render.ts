@@ -1,7 +1,7 @@
 // RENDER - status bar, framed rounds, diffs, help
 
 import chalk from 'chalk';
-import { C, dim, bold, rule, termWidth, contentWidth, wrapVisible, disableMouse, visibleLength } from './theme.js';
+import { C, dim, bold, rule, termWidth, contentWidth, wrapVisible, visibleLength } from './theme.js';
 import { renderMarkdown } from './markdown.js';
 import { getMode } from '../core/modes.js';
 import { getContextWindow, contextUsage } from '../core/engine.js';
@@ -96,7 +96,6 @@ export function showWelcome(mode: Mode): void {
 }
 
 export function showStatus(state: EngineState, git: GitInfo): void {
-    disableMouse(); // last thing before the prompt → wheel scrolls the buffer
     const totalIn = state.exchanges.reduce((s, e) => s + e.inTokens, 0);
     const totalOut = state.exchanges.reduce((s, e) => s + e.outTokens, 0);
     const used = contextUsage(state.messages);
