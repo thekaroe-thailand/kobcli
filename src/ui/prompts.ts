@@ -609,67 +609,62 @@ export async function pickModel(current: string): Promise<string | null> {
         return formatModel(picked as string);
     }
 
-    // For large model lists, show top models and let user type to search.
+    // For large model lists, show popular models then let user type/paste model id.
+    console.log(`\n  ${chalk.bold(`${options.length} models available`)} — top picks:`);
+    const popularIds = new Set([
+        'deepseek/deepseek-v4-flash', 'deepseek/deepseek-v4-pro',
+        'anthropic/claude-fable-5', 'anthropic/claude-opus-4.8-fast',
+        'openai/gpt-4.1', 'openai/gpt-4.1-mini',
+    ]);
+    const popular = options.filter(o => popularIds.has(o.value));
+    const others = options.filter(o => !popularIds.has(o.value));
+    const topN = [...popular, ...others].slice(0, 20);
+    for (const o of topN) {
+        const marker = o.value === current ? chalk.hex(C.green)('●') : ' ';
+        console.log(`   ${marker} ${o.label}`);
+    }
     console.log('');
-    const topN = Math.min(20, options.length);
-    for (let i = 0; i < topN; i++) {
-        const o = options[i]!;
-        const marker = o.value === current ? chalk.hex(C.green)('● ') : '  ';
-        console.log(`  ${marker}${o.label}`);
+
+    const query = await text({
+        message: 'Type/paste model id or name to search',
+        placeholder: 'e.g. deepseek, claude, qwen, or paste full id',
+        initialValue: current,
+    });
+    if (isCancel(query)) return null;
+    const q = (query as string).trim();
+    if (!q) return null;
+
+    // Exact match
+    const exact = options.find(o => o.value === q);
+    if (exact) return formatModel(exact.value);
+
+    // Fuzzy match
+    const lower = q.toLowerCase();
+    const matches = options.filter(o =>
+        o.value.toLowerCase().includes(lower) ||
+        o.label.toLowerCase().includes(lower)
+    );
+
+    if (matches.length === 0) {
+        console.log('  ' + chalk.hex(C.amber)(`No match for "${q}". Using as-is.`));
+        return formatModel(q);
     }
-    if (options.length > topN) {
-        console.log('  ' + chalk.dim(`… and ${options.length - topN} more — type to search`));
+
+    if (matches.length === 1) {
+        return formatModel(matches[0]!.value);
     }
-    console.log('');
 
-    while (true) {
-        const query = await text({
-            message: 'Type model name to search (or provider/model to pick directly)',
-            placeholder: 'e.g. deepseek claude qwen',
-            initialValue: '',
-        });
-        if (isCancel(query)) return null;
-        const q = (query as string).trim();
-        if (!q) continue;
-
-        // Try exact match first
-        const exact = options.find(o => o.value === q);
-        if (exact) return formatModel(exact.value);
-
-        // Fuzzy filter
-        const lower = q.toLowerCase();
-        const matches = options.filter(o =>
-            o.value.toLowerCase().includes(lower) ||
-            o.label.toLowerCase().includes(lower)
-        );
-
-        if (matches.length === 0) {
-            console.log('  ' + chalk.hex(C.red)('No models match.'));
-            continue;
-        }
-
-        if (matches.length === 1) {
-            return formatModel(matches[0]!.value);
-        }
-
-        console.log('');
-        const show = matches.slice(0, 15);
-        for (const m of show) {
-            console.log(`  ${chalk.hex(C.green)('●')} ${m.label}`);
-        }
-        if (matches.length > 15) {
-            console.log('  ' + chalk.dim(`… and ${matches.length - 15} more — narrow your search`));
-        }
-        console.log('');
-
-        const picked = await select({
-            message: `Pick model (${matches.length} matches)`,
-            options: show,
-            maxItems: 10,
-        });
-        if (isCancel(picked)) continue;
-        return formatModel(picked as string);
-    }
+    // Multiple matches — show and pick
+    console.log(`\n  ${matches.length} matches for "${q}":`);
+    const show = matches.slice(0, 12);
+    const selectOptions = show.map(o => ({ value: o.value, label: o.label, hint: undefined }));
+    const picked = await select({
+        message: 'Pick one',
+        options: selectOptions,
+        maxItems: 10,
+    });
+    if (isCancel(picked)) return null;
+    return formatModel(picked as string);
 }
 
 export async function pickProject(projects: { name: string; path: string }[]): Promise<string | null> {
