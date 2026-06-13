@@ -16,30 +16,22 @@ function shouldHideLine(line: string): boolean {
     return HIDDEN_LINE_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
-function renderProgress(startMs: number, fromVersion: string, toVersion: string, done: boolean = false): void {
+const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
+let spinnerFrame = 0;
+
+function renderProgress(fromVersion: string, toVersion: string): void {
     if (!process.stdout.isTTY) return;
-    const width = 20;
-    const elapsed = Date.now() - startMs;
-    const rawPct = done ? 100 : Math.min(95, Math.round((elapsed / 30_000) * 95));
-    const filled = Math.round((rawPct / 100) * width);
-    let bar = '';
-    for (let i = 0; i < width; i++) {
-        bar += i < filled ? '=' : ' ';
-    }
-    const elapsedStr = (elapsed / 1000).toFixed(1);
-    const pctStr = String(rawPct).padStart(3);
+    spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
+    const s = chalk.hex(C.cyan)(SPINNER_FRAMES[spinnerFrame]!);
     const label = fromVersion && fromVersion !== '?' && toVersion && toVersion !== fromVersion
         ? `Upgrading KOB CLI ${chalk.dim('v' + fromVersion)} ${chalk.dim('→')} ${chalk.hex(C.green)('v' + toVersion)}`
-        : `Upgrading KOB CLI`;
-    const plain = `  [${bar}] ${pctStr}% Upgrading KOB CLI v${fromVersion} → v${toVersion} · ${elapsedStr}s`;
-    const line = `\r  ${chalk.hex(C.cyan)('[' + bar + ']')} ${chalk.hex(C.cyan)(pctStr + '%')} ${label}${chalk.dim(` · ${elapsedStr}s`)}`;
-    // Overwrite in two passes: clear with spaces first, then render.
-    // This works on Windows consoles that don't support ANSI ESC[K.
-    process.stdout.write('\r' + ' '.repeat(plain.length + 4) + '\r' + line);
+        : 'Upgrading KOB CLI';
+    const line = `  ${s} ${label}`;
+    process.stdout.write('\r' + ' '.repeat(80) + '\r' + line);
 }
 
 function clearProgress(): void {
-    if (process.stdout.isTTY) process.stdout.write('\r' + ' '.repeat(100) + '\r');
+    if (process.stdout.isTTY) process.stdout.write('\r' + ' '.repeat(80) + '\r');
 }
 
 function flushBuffer(buffer: string, lines: string[]): string {
@@ -103,9 +95,8 @@ export async function runUpgrade(): Promise<UpgradeResult> {
     const visibleOutput: string[] = [];
     let stdoutBuffer = '';
     let stderrBuffer = '';
-    const startMs = Date.now();
     const timer = setInterval(() => {
-        renderProgress(startMs, fromVersion, toVersion);
+        renderProgress(fromVersion, toVersion);
     }, 90);
 
     child.stdout?.setEncoding('utf8');
@@ -132,7 +123,6 @@ export async function runUpgrade(): Promise<UpgradeResult> {
             clearInterval(timer);
             if (stdoutBuffer && !shouldHideLine(stdoutBuffer)) visibleOutput.push(stdoutBuffer);
             if (stderrBuffer && !shouldHideLine(stderrBuffer)) visibleOutput.push(stderrBuffer);
-            renderProgress(startMs, fromVersion, toVersion, true);
             clearProgress();
             resolve({ ok: code === 0, exitCode: code ?? -1, visibleOutput, fromVersion, toVersion });
         });
