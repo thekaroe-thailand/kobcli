@@ -16,22 +16,16 @@ function shouldHideLine(line: string): boolean {
     return HIDDEN_LINE_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
-const SPINNER_FRAMES = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
-let spinnerFrame = 0;
-
 function renderProgress(fromVersion: string, toVersion: string): void {
     if (!process.stdout.isTTY) return;
-    spinnerFrame = (spinnerFrame + 1) % SPINNER_FRAMES.length;
-    const s = chalk.hex(C.cyan)(SPINNER_FRAMES[spinnerFrame]!);
     const label = fromVersion && fromVersion !== '?' && toVersion && toVersion !== fromVersion
         ? `Upgrading KOB CLI ${chalk.dim('v' + fromVersion)} ${chalk.dim('→')} ${chalk.hex(C.green)('v' + toVersion)}`
         : 'Upgrading KOB CLI';
-    const line = `  ${s} ${label}`;
-    process.stdout.write('\r' + ' '.repeat(80) + '\r' + line);
+    console.log(`  ${label}${chalk.dim(' …')}`);
 }
 
 function clearProgress(): void {
-    if (process.stdout.isTTY) process.stdout.write('\r' + ' '.repeat(80) + '\r');
+    // no-op — we just print once, no animation to clear
 }
 
 function flushBuffer(buffer: string, lines: string[]): string {
@@ -95,9 +89,8 @@ export async function runUpgrade(): Promise<UpgradeResult> {
     const visibleOutput: string[] = [];
     let stdoutBuffer = '';
     let stderrBuffer = '';
-    const timer = setInterval(() => {
-        renderProgress(fromVersion, toVersion);
-    }, 90);
+
+    renderProgress(fromVersion, toVersion);
 
     child.stdout?.setEncoding('utf8');
     child.stderr?.setEncoding('utf8');
@@ -114,16 +107,12 @@ export async function runUpgrade(): Promise<UpgradeResult> {
 
     return await new Promise<UpgradeResult>((resolve) => {
         child.on('error', (error) => {
-            clearInterval(timer);
-            clearProgress();
             resolve({ ok: false, exitCode: -1, visibleOutput: [error.message], fromVersion, toVersion });
         });
 
         child.on('close', (code) => {
-            clearInterval(timer);
             if (stdoutBuffer && !shouldHideLine(stdoutBuffer)) visibleOutput.push(stdoutBuffer);
             if (stderrBuffer && !shouldHideLine(stderrBuffer)) visibleOutput.push(stderrBuffer);
-            clearProgress();
             resolve({ ok: code === 0, exitCode: code ?? -1, visibleOutput, fromVersion, toVersion });
         });
     });
