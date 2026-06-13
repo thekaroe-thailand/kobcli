@@ -18,6 +18,12 @@ pkg.version = parts.join('.');
 writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + '\n');
 console.log(`\n  📦  ${pkg.name}@${pkg.version} (${bumpType})\n`);
 
+// Update version in README.md
+const readmePath = resolve(root, 'README.md');
+let readme = readFileSync(readmePath, 'utf-8');
+readme = readme.replace(/v\d+\.\d+\.\d+/, 'v' + pkg.version);
+writeFileSync(readmePath, readme);
+
 try {
   execSync('bun run build:only', { stdio: 'inherit', cwd: root });
 } catch (e) {
@@ -33,7 +39,7 @@ try {
 }
 
 try {
-  execSync('git add package.json', { stdio: 'inherit', cwd: root });
+  execSync('git add package.json README.md', { stdio: 'inherit', cwd: root });
   execSync(`git commit -m "release: v${pkg.version}"`, { stdio: 'inherit', cwd: root });
   execSync('git push', { stdio: 'inherit', cwd: root });
   execSync('git tag v' + pkg.version, { stdio: 'inherit', cwd: root });
