@@ -1,5 +1,4 @@
 import { spawn, spawnSync } from 'node:child_process';
-import readline from 'node:readline';
 import chalk from 'chalk';
 import { C } from '../ui/theme.js';
 
@@ -32,17 +31,15 @@ function renderProgress(startMs: number, fromVersion: string, toVersion: string,
     const label = fromVersion && fromVersion !== '?' && toVersion && toVersion !== fromVersion
         ? `Upgrading KOB CLI ${chalk.dim('v' + fromVersion)} ${chalk.dim('→')} ${chalk.hex(C.green)('v' + toVersion)}`
         : `Upgrading KOB CLI`;
-    const line = `  ${chalk.hex(C.cyan)('[' + bar + ']')} ${chalk.hex(C.cyan)(pctStr + '%')} ${label}${chalk.dim(` · ${elapsedStr}s`)}`;
-    readline.cursorTo(process.stdout, 0);
-    readline.clearLine(process.stdout, 0);
-    process.stdout.write(line);
+    const plain = `  [${bar}] ${pctStr}% Upgrading KOB CLI v${fromVersion} → v${toVersion} · ${elapsedStr}s`;
+    const line = `\r  ${chalk.hex(C.cyan)('[' + bar + ']')} ${chalk.hex(C.cyan)(pctStr + '%')} ${label}${chalk.dim(` · ${elapsedStr}s`)}`;
+    // Overwrite in two passes: clear with spaces first, then render.
+    // This works on Windows consoles that don't support ANSI ESC[K.
+    process.stdout.write('\r' + ' '.repeat(plain.length + 4) + '\r' + line);
 }
 
 function clearProgress(): void {
-    if (process.stdout.isTTY) {
-        readline.cursorTo(process.stdout, 0);
-        readline.clearLine(process.stdout, 0);
-    }
+    if (process.stdout.isTTY) process.stdout.write('\r' + ' '.repeat(100) + '\r');
 }
 
 function flushBuffer(buffer: string, lines: string[]): string {

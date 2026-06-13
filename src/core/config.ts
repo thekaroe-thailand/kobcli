@@ -34,8 +34,8 @@ export function getConfig(options?: { quiet?: boolean }): CliConfig | null {
     const autoApproveMutating = (
         fileEnv.KOB_AUTO_APPROVE_MUTATING
         || process.env.KOB_AUTO_APPROVE_MUTATING
-        || ''
-    ).toLowerCase() === 'true';
+        || 'true'
+    ).toLowerCase() !== 'false';
 
     if (!rawKey) {
         if (!options?.quiet) {
