@@ -4,7 +4,7 @@
 
 **A beautiful, fully agentic AI coding assistant for your terminal.**
 
-[🇹🇭 Made in Thailand](https://www.kob-ai.dev) · v2.0.30 · MIT
+[🇹🇭 Made in Thailand](https://www.kob-ai.dev) · v2.0.31 · MIT
 
 <br>
 
