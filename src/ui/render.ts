@@ -95,7 +95,7 @@ export function showWelcome(mode: Mode): void {
     console.log('');
 }
 
-export function showStatus(state: EngineState, git: GitInfo): void {
+export function showStatus(state: EngineState, git: GitInfo, apiHost?: string): void {
     const totalIn = state.exchanges.reduce((s, e) => s + e.inTokens, 0);
     const totalOut = state.exchanges.reduce((s, e) => s + e.outTokens, 0);
     const used = contextUsage(state.messages);
@@ -114,6 +114,8 @@ export function showStatus(state: EngineState, git: GitInfo): void {
         gitStr = `  ${dim('│')}  ${chalk.hex(C.green)('⎇ ' + (git.branch || '?'))} ${dirtyMark}`;
     }
 
+    const hostStr = apiHost ? `  ${dim('│')}  ${chalk.hex(C.violet)(apiHost)}` : '';
+
     console.log(rule());
     console.log(
         `  ${chalk.hex(mi.color)(mi.icon + ' ' + mi.label)}  ${dim('│')}  ` +
@@ -121,7 +123,7 @@ export function showStatus(state: EngineState, git: GitInfo): void {
         `${chalk.hex(C.blue)('↓' + fmtNum(totalIn))} ${chalk.hex(C.pink)('↑' + fmtNum(totalOut))}` +
         gitStr,
     );
-    console.log(`  ${ctxBar} ${barColor(pct + '%')}  ${dim(fmtNum(used) + '/' + fmtNum(max) + ' ctx')}  ${dim('·')}  ${dim(state.exchanges.length + ' rounds')}`);
+    console.log(`  ${ctxBar} ${barColor(pct + '%')}  ${dim(fmtNum(used) + '/' + fmtNum(max) + ' ctx')}  ${dim('·')}  ${dim(state.exchanges.length + ' rounds')}${hostStr}`);
     console.log(rule());
 }
 

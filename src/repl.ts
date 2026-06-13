@@ -114,7 +114,7 @@ export async function runRepl(version: string): Promise<void> {
 
     while (true) {
         const git = getGitInfo(process.cwd());
-        showStatus(state, git);
+        showStatus(state, git, cfg?.baseUrl?.replace(/^https?:\/\//, '').replace(/\/.*$/, ''));
 
         const mi = getMode(state.mode);
         const promptLabel = `${chalk.hex(mi.color)(mi.icon + ' ' + mi.label)}`;
