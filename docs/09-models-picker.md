@@ -124,3 +124,12 @@ Added left rail border (`│`) and real-time search functionality to the model p
 - **Search scope**: Case-insensitive substring search across model ID and full label (including provider and pricing)
 - **Visual markers**: Current model marked with green `●`, selected item with cyan `▸` and highlighted background
 - **Navigation hint**: Bottom line shows `↑↓ navigate · Enter select · Esc cancel`
+
+## 2026-06-13 Bug Fix: Model ID Prefix Issue
+
+Fixed a bug where model IDs from third-party APIs (like opencode.ai) were incorrectly prefixed with `deepseek/`:
+
+- **Problem**: `formatModel()` was adding `deepseek/` prefix to all model IDs without `/`, causing "Model X is not supported" errors
+- **Example**: `qwen3.6-plus` became `deepseek/qwen3.6-plus` which the API didn't recognize
+- **Fix**: Model IDs selected from the API list are now used as-is without `formatModel()` transformation
+- **Note**: `formatModel()` is still applied to manually entered model IDs (fallback when API list is empty)
