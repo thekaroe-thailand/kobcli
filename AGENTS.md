@@ -196,6 +196,7 @@ AI Agents working on this project MUST adhere to the following workflow rules:
 4. **Update README.md**: If the change affects public-facing commands, features, or installation steps, update `README.md` to reflect those changes.
 5. **Commit and Push Promptly**: Once a task is fully completed and tested, commit the changes and push them to Git immediately. Do not leave uncommitted work hanging.
 6. **Build and Release**: After committing and pushing code changes, ALWAYS run `bun run build` to bump the version, compile the binary, publish to npm, and create a git tag. This is a mandatory step — never skip it. The command `bun run build` is a full release (bump + build + publish + push + tag). Use `bun run build:only` only for local binary compilation without version bump.
+7. **Push to Master & Return to Dev**: After a successful build and release, ALWAYS push the changes to the `master` branch to make them the stable release. Then immediately switch back to the `kob-dev` branch to continue development work. The workflow is: `git checkout master` → `git merge kob-dev` (or push changes) → `git checkout kob-dev`. All active development happens on `kob-dev`; `master` is for stable releases only.
 
 ## Best Practices
 
