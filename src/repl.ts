@@ -9,7 +9,7 @@ import {
 } from './core/engine.js';
 import { getConfig, loadEnv } from './core/config.js';
 import { getMode } from './core/modes.js';
-import { readEnvFile } from './core/env-file.js';
+import { readEnvFile, writeEnvFile } from './core/env-file.js';
 import type { UndoEntry } from './core/types.js';
 import { getGitInfo } from './tools/git.js';
 import { runShellCommand } from './tools/shell.js';
@@ -28,6 +28,7 @@ import {
     promptInput, pickSlashCommand, pickModel, editConfig, confirmCommand,
     promptSearchQuery, promptSearchAction, promptReplacementText, pickSearchFile,
     promptOpenFile, pickProject, promptProjectCreate, pickProjectToDelete,
+    promptConfigText, promptConfigPassword,
 } from './ui/prompts.js';
 import { loadProjects, saveProjects, addProject, removeProject } from './core/projects.js';
 import { runUpgrade } from './core/upgrade.js';
@@ -36,7 +37,8 @@ import { ensureInteractiveStdin, restoreStdin, snapshotStdin, type StdinSnapshot
 
 const KNOWN_COMMANDS = new Set([
     'chat', 'ask', 'plan', 'code', 'clear', 'newchat', 'reset', 'exit', 'quit',
-    'help', 'models', 'config', 'git', 'diff', 'undo', 'tokens', 'init', 'find', 'replace',
+    'help', 'models', 'config', 'config-info', 'config:provider', 'config:key', 'config:model',
+    'git', 'diff', 'undo', 'tokens', 'init', 'find', 'replace',
     'openfile', 'open', 'read', 'ls', 'dir', 'project:list', 'project:create', 'project:delete', 'upgrade'
 ]);
 
@@ -344,6 +346,45 @@ async function handleCommand(
                 const env = readEnvFile();
                 if (env.KOB_MODEL_ID) state = { ...state, model: formatModel(env.KOB_MODEL_ID) };
                 banner('Configuration saved', C.green);
+            }
+            return { state };
+        }
+
+        case 'config-info': {
+            const cfg = getConfig({ quiet: true });
+            if (!cfg) { errorBox('No configuration found. Run /config to set up.'); return { state }; }
+            const provider = cfg.modelId?.split('/')[0] || '(not set)';
+            const maskedKey = cfg.bearerToken
+                ? cfg.bearerToken.slice(0, 6) + '••••••••' + cfg.bearerToken.slice(-4)
+                : '(not set)';
+            console.log('');
+            console.log('  ' + chalk.hex(C.cyan).bold('Provider : ') + chalk.hex(C.green)(provider));
+            console.log('  ' + chalk.hex(C.cyan).bold('Model    : ') + chalk.hex(C.green)(cfg.modelId || '(not set)'));
+            console.log('  ' + chalk.hex(C.cyan).bold('Base URL : ') + chalk.hex(C.green)(cfg.baseUrl));
+            console.log('  ' + chalk.hex(C.cyan).bold('API Key  : ') + chalk.hex(C.amber)(maskedKey));
+            console.log('');
+            return { state };
+        }
+
+        case 'config:provider': {
+            const val = await promptConfigText('API Base URL', 'KOB_API_BASE_URL', 'https://www.kob-ai.dev');
+            if (val !== null) banner('Provider URL updated', C.green);
+            return { state };
+        }
+
+        case 'config:key': {
+            const val = await promptConfigPassword('API key (kob_xxx:token)');
+            if (val !== null) { loadEnv(); banner('API key updated', C.green); }
+            return { state };
+        }
+
+        case 'config:model': {
+            const chosen = await pickModel(state.model || '');
+            if (chosen) {
+                writeEnvFile({ KOB_MODEL_ID: chosen });
+                process.env.KOB_MODEL_ID = chosen;
+                state = { ...state, model: formatModel(chosen) };
+                banner(`Model → ${chosen}`, C.amber);
             }
             return { state };
         }

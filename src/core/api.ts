@@ -151,7 +151,6 @@ export class KobApiClient {
     /** Fetch the list of available models. Tries a couple of known shapes. */
     async listModels(): Promise<ModelInfo[]> {
         const tryEndpoints: { method: 'POST' | 'GET'; path: string }[] = [
-            { method: 'POST', path: '/api/ai/models' },
             { method: 'POST', path: '/api/models' },
             { method: 'GET', path: '/api/v2/models' },
         ];

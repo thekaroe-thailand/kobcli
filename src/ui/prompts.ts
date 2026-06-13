@@ -54,27 +54,31 @@ type SelectOption = {
 const INPUT_CURSOR = chalk.hex(C.cyan).bold('_');
 
 const SLASH_OPTIONS = [
-    { value: '/chat', label: '/chat     Open conversation' },
-    { value: '/ask', label: '/ask      Q&A about your code' },
-    { value: '/plan', label: '/plan     Architect a solution' },
-    { value: '/code', label: '/code     Build & edit autonomously' },
-    { value: '/models', label: '/models   Switch AI model' },
-    { value: '/config', label: '/config   Edit global KOB settings' },
-    { value: '/diff', label: '/diff     Show last changes' },
-    { value: '/undo', label: '/undo     Revert last changes' },
-    { value: '/git', label: '/git      Repo status' },
-    { value: '/find', label: '/find     Find text in files' },
-    { value: '/replace', label: '/replace  Replace text locally' },
-    { value: '/open', label: '/open     Open and read a file' },
-    { value: '/init', label: '/init     Scaffold AGENTS.md' },
-    { value: '/tokens', label: '/tokens   Usage this session' },
+    { value: '/chat', label: '/chat          Open conversation' },
+    { value: '/ask', label: '/ask           Q&A about your code' },
+    { value: '/plan', label: '/plan          Architect a solution' },
+    { value: '/code', label: '/code          Build & edit autonomously' },
+    { value: '/models', label: '/models        Switch AI model' },
+    { value: '/config', label: '/config        Edit global KOB settings' },
+    { value: '/config-info', label: '/config-info   Show current configuration' },
+    { value: '/config:provider', label: '/config:provider  Change API provider URL' },
+    { value: '/config:key', label: '/config:key     Change API key' },
+    { value: '/config:model', label: '/config:model   Change default model' },
+    { value: '/diff', label: '/diff          Show last changes' },
+    { value: '/undo', label: '/undo          Revert last changes' },
+    { value: '/git', label: '/git           Repo status' },
+    { value: '/find', label: '/find          Find text in files' },
+    { value: '/replace', label: '/replace       Replace text locally' },
+    { value: '/open', label: '/open          Open and read a file' },
+    { value: '/init', label: '/init          Scaffold AGENTS.md' },
+    { value: '/tokens', label: '/tokens        Usage this session' },
     { value: '/project:list', label: '/project:list   List and switch projects' },
     { value: '/project:create', label: '/project:create Create a new project' },
     { value: '/project:delete', label: '/project:delete Remove a project' },
-    { value: '/clear', label: '/clear    Clear session' },
-    { value: '/help', label: '/help     Show all commands' },
-    { value: '/upgrade', label: '/upgrade  Update KOB CLI to latest' },
-    { value: '/exit', label: '/exit     Quit' },
+    { value: '/clear', label: '/clear         Clear session' },
+    { value: '/help', label: '/help          Show all commands' },
+    { value: '/upgrade', label: '/upgrade       Update KOB CLI to latest' },
+    { value: '/exit', label: '/exit          Quit' },
 ];
 
 export async function promptInput(message: string): Promise<string | null> {
@@ -639,6 +643,38 @@ export async function pickProjectToDelete(projects: { name: string; path: string
     if (isCancel(result)) return null;
     return result as string;
 }
+export async function promptConfigText(
+    message: string,
+    envKey: string,
+    placeholder: string,
+): Promise<string | null> {
+    const env = readEnvFile();
+    const currentValue = env[envKey] || '';
+    const result = await text({
+        message,
+        placeholder,
+        initialValue: currentValue,
+    });
+    if (isCancel(result)) return null;
+    const val = sanitizeInput(result as string);
+    if (val) {
+        writeEnvFile({ [envKey]: val });
+        process.env[envKey] = val;
+    }
+    return val;
+}
+
+export async function promptConfigPassword(message: string): Promise<string | null> {
+    const result = await password({ message });
+    if (isCancel(result)) return null;
+    const val = result as string;
+    if (val) {
+        writeEnvFile({ KOB_API_KEY: val });
+        process.env.KOB_API_KEY = val;
+    }
+    return val;
+}
+
 export async function editConfig(): Promise<boolean> {
     const env = readEnvFile();
     console.log('  ' + chalk.dim('editing ' + describeEnvPath()));
