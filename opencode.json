@@ -3,8 +3,8 @@
   "username": "controlc",
   "command": {
     "build": {
-      "description": "Run npm run build, merge kob-dev to master, push, then switch back to kob-dev",
-      "prompt": "Run these steps in order:\n1. Commit all uncommitted changes on current branch with a descriptive message\n2. Run `npm run build` to bump version, compile binary, publish to npm, and push tags\n3. Checkout master, merge kob-dev, push master\n4. Checkout back to kob-dev\n5. Report the new version number and confirm success"
+      "description": "Build, commit, merge kob-dev → master, push, back to kob-dev",
+      "template": "Execute these steps in order (do NOT skip any):\n1. Run `bun run build:only` to compile the binary\n2. Run `git status --short` and stage all modified files with `git add`\n3. Commit with message \"build: <list changed files>\"\n4. Run `git checkout master`, `git merge kob-dev`, `git push origin master`\n5. Run `git checkout kob-dev`, `git push origin kob-dev`\n6. Confirm success with a one-line summary"
     }
   }
 }
