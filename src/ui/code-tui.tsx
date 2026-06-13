@@ -2,7 +2,7 @@ import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { render, Box, Text, useInput, useApp, useAnimation, usePaste } from 'ink';
 import { KobApiClient } from '../utils/api.js';
 import { getConfig } from '../utils/config.js';
-import { handleApiError } from '../utils/errors.js';
+
 import { writeFileSync, mkdirSync, existsSync, readFileSync, statSync, copyFileSync } from 'fs';
 import { resolve, basename, join, dirname, extname } from 'path';
 import { fileURLToPath } from 'url';
@@ -829,6 +829,7 @@ interface Exchange {
     commandResults: CommandResult[];
     durationMs: number;
     mode: Mode;
+    error?: string;
 }
 
 // ============================================================================
@@ -853,6 +854,7 @@ type LineItem =
     | { kind: 'cmd-output'; text: string; statusColor: string }
     | { kind: 'cmd-trunc'; hidden: number; statusColor: string }
     | { kind: 'meta'; exc: Exchange }
+    | { kind: 'response-error'; text: string }
     | { kind: 'separator' }
     | { kind: 'blank' };
 
@@ -926,6 +928,10 @@ function buildLineBuffer(exchanges: Exchange[]): LineItem[] {
             }
         } else {
             buf.push({ kind: 'no-response' });
+        }
+
+        if (exc.error) {
+            buf.push({ kind: 'response-error', text: exc.error });
         }
 
         // Files
@@ -1015,6 +1021,13 @@ function renderLine(item: LineItem, idx: number): React.ReactNode {
             return (
                 <Box key={key} marginLeft={2}>
                     <Text color={c.red}>✗ (no response received)</Text>
+                </Box>
+            );
+        case 'response-error':
+            return (
+                <Box key={key} marginLeft={2}>
+                    <Text color={c.red} bold>◀ ❌ </Text>
+                    <Text color={c.red}>{item.text}</Text>
                 </Box>
             );
         case 'code-block':
@@ -1943,9 +1956,11 @@ function CodeEngine() {
         setPhase('generating');
         setStartMs(t0);
 
-        // If images are attached, include them as a clear hint in the user message
-        // (proper multimodal sending would require extending the API client)
-        const fullInput = attachments.length > 0
+        // If images are attached AND the model supports vision, include them as
+        // a clear hint in the user message. Skip attachments when the current
+        // model is text-only to avoid API errors like "model does not support
+        // image input". (Paths are currently sent as text, not multimodal bytes.)
+        const fullInput = attachments.length > 0 && modelSupportsVision(model)
             ? `${input}\n\n[Attached images — paths saved for reference:]\n${attachments.map(a => `  - ${a}`).join('\n')}`
             : input;
         messagesRef.current.push({ role: 'user', content: fullInput });
@@ -2020,8 +2035,25 @@ function CodeEngine() {
             }]);
             setPhase('input');
         } catch (error) {
-            handleApiError(error);
-            process.exit(1);
+            const errMsg = error instanceof Error ? error.message : String(error);
+            // Pop the failed user message so it doesn't persist into the next turn
+            const lastMsg = messagesRef.current[messagesRef.current.length - 1];
+            if (lastMsg?.role === 'user') messagesRef.current.pop();
+            // Push an error exchange so the error appears inside the Round x frame
+            setExchanges(prev => [...prev, {
+                input,
+                output: '',
+                model,
+                inTokens,
+                outTokens: 0,
+                files: [],
+                created: [],
+                commandResults: [],
+                mode: currentMode,
+                durationMs: Date.now() - t0,
+                error: errMsg,
+            }]);
+            setPhase('input');
         }
     }, [model, handleSlashCommand, askUserApproval]);
 

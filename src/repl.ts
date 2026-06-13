@@ -10,6 +10,7 @@ import {
 import { getConfig, loadEnv } from './core/config.js';
 import { getMode } from './core/modes.js';
 import { readEnvFile, writeEnvFile } from './core/env-file.js';
+import { saveHistory } from './core/history.js';
 import type { UndoEntry } from './core/types.js';
 import { getGitInfo } from './tools/git.js';
 import { runShellCommand } from './tools/shell.js';
@@ -339,7 +340,7 @@ async function handleCommand(
 
         case 'models': {
             const m = await pickModel(state.model);
-            if (m) { state = { ...state, model: m }; banner(`Model → ${m}`, C.amber); }
+            if (m) { state = { ...state, model: m }; banner(`Model → ${m}`, C.amber); saveHistory(state.exchanges, state.messages, state.model); }
             return { state };
         }
 
@@ -388,6 +389,7 @@ async function handleCommand(
                 process.env.KOB_MODEL_ID = chosen;
                 state = { ...state, model: formatModel(chosen) };
                 banner(`Model → ${chosen}`, C.amber);
+                saveHistory(state.exchanges, state.messages, state.model);
             }
             return { state };
         }

@@ -15,14 +15,17 @@ function sessionsDir(): string {
 }
 
 function sessionFile(): string {
-    // one session file per working directory
-    const hash = createHash('sha1').update(process.cwd()).digest('hex').slice(0, 16);
+    // Normalize path to lowercase to handle Windows case-insensitivity
+    // (e.g. C:\Project vs C:\project should share the same session)
+    const cwd = process.cwd().toLowerCase();
+    const hash = createHash('sha1').update(cwd).digest('hex').slice(0, 16);
     return join(sessionsDir(), `${hash}.json`);
 }
 
 export interface SessionData {
     exchanges: Exchange[];
     messages: ChatMessage[];
+    model?: string;
 }
 
 export function loadHistory(): SessionData {
@@ -33,17 +36,18 @@ export function loadHistory(): SessionData {
         return {
             exchanges: Array.isArray(data.exchanges) ? data.exchanges : [],
             messages: Array.isArray(data.messages) ? data.messages : [],
+            model: typeof data.model === 'string' ? data.model : undefined,
         };
     } catch {
         return { exchanges: [], messages: [] };
     }
 }
 
-export function saveHistory(exchanges: Exchange[], messages: ChatMessage[]): void {
+export function saveHistory(exchanges: Exchange[], messages: ChatMessage[], model?: string): void {
     try {
         // keep the transcript from ballooning: cap stored context
         const trimmedMessages = messages.slice(-60);
-        writeFileSync(sessionFile(), JSON.stringify({ exchanges: exchanges.slice(-40), messages: trimmedMessages }, null, 0));
+        writeFileSync(sessionFile(), JSON.stringify({ exchanges: exchanges.slice(-40), messages: trimmedMessages, model }, null, 0));
     } catch { /* non-fatal */ }
 }
 

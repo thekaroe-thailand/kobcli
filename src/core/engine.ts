@@ -44,7 +44,9 @@ export function formatModel(model?: string): string {
 
 export function createInitialState(cfg: CliConfig): EngineState {
     const saved = loadHistory();
-    const model = cfg.modelId ? formatModel(cfg.modelId) : 'deepseek/deepseek-coder';
+    const savedModel = saved.model;
+    const configModel = cfg.modelId ? formatModel(cfg.modelId) : undefined;
+    const model = savedModel || configModel || 'deepseek/deepseek-coder';
     return {
         exchanges: saved.exchanges,
         messages: saved.messages,
@@ -312,7 +314,7 @@ function finalize(
         exchanges: [...state.exchanges, exchange],
         messages: ctx.messages,
     };
-    saveHistory(newState.exchanges, newState.messages);
+    saveHistory(newState.exchanges, newState.messages, newState.model);
     return { state: newState, error, undo: ctx.undo };
 }
 

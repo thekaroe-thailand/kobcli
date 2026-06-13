@@ -11,6 +11,7 @@ import { formatModel } from '../core/engine.js';
 import { C, dim, disableMouse, sanitizeInput, visibleLength, contentWidth } from './theme.js';
 import { ensureInteractiveStdin, restoreStdin, snapshotStdin } from './tty.js';
 import chalk from 'chalk';
+import stringWidth from 'string-width';
 
 export { spinner, isCancel } from '@clack/prompts';
 
@@ -153,17 +154,46 @@ export async function promptInput(message: string): Promise<string | null> {
             }
         };
 
-        // Count how many terminal rows the rendered prompt occupies so the
-        // next render can move the cursor back and clear wrapped lines too.
-        const countWrappedLines = (text: string): number => {
-            const w = contentWidth();
-            let count = 0;
-            for (const line of text.split('\n')) {
-                const len = visibleLength(line);
-                count += Math.max(1, Math.ceil(len / w));
+/**
+ * Split a (possibly ANSI-decorated) string into display lines of at most
+ * `maxWidth` visual columns.  ANSI escape sequences are kept as atomic units;
+ * CJK / emoji double-width characters are measured via string-width.
+ */
+function splitAnsiChars(text: string, maxWidth: number): string[] {
+    const lines: string[] = [];
+    const rawLines = text.split('\n');
+    for (const rawLine of rawLines) {
+        const chars = [...rawLine];
+        let i = 0;
+        while (i < chars.length) {
+            let seg = '';
+            let segWidth = 0;
+            while (i < chars.length && segWidth < maxWidth) {
+                // ANSI escape sequence → keep whole
+                if (chars[i] === '\x1b') {
+                    let ansi = '\x1b';
+                    i++;
+                    while (i < chars.length) {
+                        ansi += chars[i]!;
+                        const c = chars[i]!;
+                        i++;
+                        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) break;
+                    }
+                    seg += ansi;
+                    continue;
+                }
+                const ch = chars[i]!;
+                const w = stringWidth(ch) || 1;
+                if (segWidth + w > maxWidth) break;
+                seg += ch;
+                segWidth += w;
+                i++;
             }
-            return count;
-        };
+            lines.push(seg);
+        }
+    }
+    return lines.length > 0 ? lines : [''];
+}
 
         readline.emitKeypressEvents(stdin);
         ensureInteractiveStdin(stdin);
@@ -184,17 +214,26 @@ export async function promptInput(message: string): Promise<string | null> {
         };
 
         const render = () => {
-            // Roll the cursor up to the first row of the previous render so
-            // wrap lines (which `clearLine` alone can't reach) are wiped.
+            // Move up to the first line of the previous render.
+            // Use direct ANSI sequences — readline.moveCursor with negative dy is
+            // unreliable on Windows terminals when the prompt has wrapped lines.
             if (renderedLines > 1) {
-                readline.moveCursor(stdout, 0, -(renderedLines - 1));
+                stdout.write(`\x1b[${renderedLines - 1}A`);
             }
-            readline.cursorTo(stdout, 0);
-            readline.clearScreenDown(stdout);
+            stdout.write('\r\x1b[0J'); // carriage-return + clear-to-end-of-screen
+
             const content = value.length > 0 || cursorVisible ? renderValue() : ' ';
             const fullText = `${message} ${content}`;
-            stdout.write(fullText);
-            renderedLines = countWrappedLines(fullText);
+
+            // Write line-by-line with explicit newlines so we control wrapping,
+            // avoiding terminal auto-wrap that can cause ghost/duplicate text.
+            const w = contentWidth();
+            const wrapLines = splitAnsiChars(fullText, w);
+            for (let i = 0; i < wrapLines.length; i++) {
+                if (i > 0) stdout.write('\n');
+                stdout.write(wrapLines[i]!);
+            }
+            renderedLines = wrapLines.length;
 
             // ── slash-command suggestions ────────────────────────
             if (showSuggestions && suggestedCommands.length > 0) {

@@ -141,6 +141,18 @@ export function parseShellCommands(content: string): string[] {
             cmds.push(trimmed.slice(2));
         }
     }
+
+    // Also extract <tool:run_command><command>...</command></tool:run_command>
+    const runCmdRe = /<tool:run_command>([\s\S]*?)<\/tool:run_command>/gi;
+    let match: RegExpExecArray | null;
+    while ((match = runCmdRe.exec(content)) !== null) {
+        const body = match[1]!;
+        const cmdMatch = body.match(/<command>([\s\S]*?)<\/command>/i);
+        if (cmdMatch && cmdMatch[1]) {
+            cmds.push(cmdMatch[1].trim());
+        }
+    }
+
     return cmds;
 }
 
@@ -148,6 +160,7 @@ export function parseShellCommands(content: string): string[] {
 export function stripToolSyntax(content: string): string {
     return content
         .replace(/<tool:(read_file|str_replace|write_file)>[\s\S]*?<\/tool:\1>/g, '')
+        .replace(/<tool:run_command>[\s\S]*?<\/tool:run_command>/gi, '')
         .replace(/\n{3,}/g, '\n\n')
         .trim();
 }
