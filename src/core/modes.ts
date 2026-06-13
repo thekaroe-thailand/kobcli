@@ -26,6 +26,7 @@ const CODE_SYSTEM = [
     '   ```',
     '',
     'RULES:',
+    '- Complete ALL parts of the request. If the task needs backend AND UI, do BOTH. Half-finished work is useless.',
     '- When you see an error: FIX IT YOURSELF. Install missing packages. Clear caches. Re-run.',
     '- After making changes: RUN the build/test command. If it fails, read the error and fix it.',
     '- Build passing does NOT mean the app works. Verify at runtime (curl, start server, etc).',
