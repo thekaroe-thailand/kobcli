@@ -13,6 +13,8 @@ export interface CliConfig {
     maxTokens: number;
     autoApproveReadonly: boolean;
     autoApproveMutating: boolean;
+    autoApproveDangerous: boolean;
+    enableThinking: boolean;
 }
 
 export interface ModeInfo {

@@ -60,7 +60,7 @@ export class KobApiClient {
     async *chatStream(
         model: string,
         messages: ChatMessage[],
-        options?: { temperature?: number; max_tokens?: number; system_prompt?: string; signal?: AbortSignal },
+        options?: { temperature?: number; max_tokens?: number; system_prompt?: string; signal?: AbortSignal; reasoning?: boolean },
     ): AsyncGenerator<ChatCompletionChunk> {
         const maxRetries = 5;
         let attempt = 0;
@@ -88,6 +88,11 @@ export class KobApiClient {
                 if (options?.max_tokens !== undefined) body.max_tokens = options.max_tokens;
                 if (options?.system_prompt) {
                     (body.messages as ChatMessage[]).unshift({ role: 'system', content: options.system_prompt });
+                }
+                // Auto-enable deep thinking for models that support it.
+                // deepseek-v4-flash with reasoning rivals deepseek-v4-pro quality.
+                if (options?.reasoning !== false && /deepseek.?v4|deepseek.?v4.?flash/i.test(model)) {
+                    body.enable_thinking = true;
                 }
 
                 const response = await fetch(url, {

@@ -604,11 +604,46 @@ export async function pickModel(current: string): Promise<string | null> {
     // The previous promptInput may have left it in cooked/paused mode.
     ensureInteractiveStdin(process.stdin);
 
-    const result = options.length > 12
-        ? await pickSearchableOption('Select AI model', options, current)
-        : await select({ message: 'Select AI model', options, initialValue: current, maxItems: 12 });
-    if (isCancel(result)) return null;
-    return formatModel(result as string);
+    let result: string | null = null;
+    if (options.length <= 12) {
+        const picked = await select({ message: 'Select AI model', options, initialValue: current, maxItems: 12 });
+        if (isCancel(picked)) return null;
+        result = picked as string;
+    } else {
+        // Two-step filter to avoid @clack/prompts autocomplete hanging on large lists.
+        let filtered = options;
+        let query = '';
+        while (true) {
+            const searchPrompt = query
+                ? `Search (${filtered.length} match${filtered.length === 1 ? '' : 'es'}):`
+                : 'Search model (type to filter):';
+            query = (await text({ message: searchPrompt, placeholder: 'e.g. deepseek claude qwen', initialValue: query })) as string;
+            if (isCancel(query)) return null;
+            if (!query.trim()) break;
+            const q = query.trim().toLowerCase();
+            filtered = options.filter(o =>
+                o.value.toLowerCase().includes(q) ||
+                o.label.toLowerCase().includes(q)
+            );
+            if (filtered.length === 0) {
+                console.log('  ' + chalk.dim('No models match. Try again.'));
+                query = '';
+                filtered = options;
+                continue;
+            }
+            if (filtered.length <= 12) break;
+            console.log('  ' + chalk.dim(`${filtered.length} matches — narrow your search`));
+        }
+        const picked = await select({
+            message: `Select model (${filtered.length} match${filtered.length === 1 ? '' : 'es'})`,
+            options: filtered.slice(0, 20),
+            initialValue: current,
+            maxItems: 12,
+        });
+        if (isCancel(picked)) return null;
+        result = picked as string;
+    }
+    return formatModel(result);
 }
 
 export async function pickProject(projects: { name: string; path: string }[]): Promise<string | null> {

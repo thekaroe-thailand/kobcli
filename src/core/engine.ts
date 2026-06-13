@@ -131,6 +131,7 @@ export async function handleSubmit(
                     max_tokens: cfg.maxTokens,
                     system_prompt: systemPrompt,
                     signal: hooks.signal,
+                    reasoning: cfg.enableThinking,
                 })) {
                     const delta = chunk.choices?.[0]?.delta?.content;
                     if (delta) {

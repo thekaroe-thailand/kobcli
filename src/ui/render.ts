@@ -39,7 +39,6 @@ function railText(text: string): void {
 export function beginRound(mode: Mode, input: string, idx: number): void {
     const mi = getMode(mode);
     RAIL_COLOR = mi.color;
-    console.log('');
     console.log('  ' + chalk.hex(mi.color)('╭─ ' + mi.icon) + '  ' + dim(`Round ${idx + 1}`) + dim('  ·  ') + chalk.hex(mi.color)(mi.label));
     const preview = input.length > 200 ? input.slice(0, 197) + '…' : input;
     const w = railWidth() - 2;
@@ -207,7 +206,6 @@ export function showResponse(exc: Exchange): void {
     if (exc.commandResults.length > 0) parts.push(chalk.hex(C.orange)(`${exc.commandResults.length} cmd`));
     parts.push(chalk.hex(C.slate)(exc.model));
     console.log('  ' + chalk.hex(RAIL_COLOR)('╰─ ') + parts.join(dim('  ·  ')));
-    console.log('');
 }
 
 function stripTags(s: string): string {

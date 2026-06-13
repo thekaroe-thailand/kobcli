@@ -37,6 +37,18 @@ export function getConfig(options?: { quiet?: boolean }): CliConfig | null {
         || 'true'
     ).toLowerCase() !== 'false';
 
+    const autoApproveDangerous = (
+        fileEnv.KOB_AUTO_APPROVE_DANGEROUS
+        || process.env.KOB_AUTO_APPROVE_DANGEROUS
+        || 'true'
+    ).toLowerCase() !== 'false';
+
+    const enableThinking = (
+        fileEnv.KOB_ENABLE_THINKING
+        || process.env.KOB_ENABLE_THINKING
+        || 'auto'
+    ).toLowerCase() !== 'false';
+
     if (!rawKey) {
         if (!options?.quiet) {
             console.error('\n  ✗ KOB_API_KEY is not set.');
@@ -58,6 +70,8 @@ export function getConfig(options?: { quiet?: boolean }): CliConfig | null {
         maxTokens,
         autoApproveReadonly,
         autoApproveMutating,
+        autoApproveDangerous,
+        enableThinking,
     };
 }
 
