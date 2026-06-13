@@ -56,13 +56,35 @@ export class KobApiClient {
         };
     }
 
+    private resolveChatPath(): string {
+        if (process.env.KOB_API_CHAT_PATH) return process.env.KOB_API_CHAT_PATH;
+        // If the base URL already ends with the full endpoint, use it as-is
+        if (this.baseUrl.endsWith('/chat/completions')) return '';
+        // If base URL ends with /v1 (OpenAI standard), append /chat/completions
+        if (this.baseUrl.endsWith('/v1')) return '/chat/completions';
+        // KOB AI API uses /api/v2 prefix
+        if (this.baseUrl.includes('kob-ai.dev')) return '/api/v2/chat/completions';
+        // Default: OpenAI-compatible /v1/chat/completions
+        return '/v1/chat/completions';
+    }
+
+    private resolveModelsEndpoints(): { method: 'POST' | 'GET'; path: string }[] {
+        if (process.env.KOB_API_MODELS_PATH) return [{ method: 'POST', path: process.env.KOB_API_MODELS_PATH }];
+        // Try OpenAI-compatible first, then KOB-specific
+        return [
+            { method: 'GET', path: '/v1/models' },
+            { method: 'POST', path: '/api/models' },
+            { method: 'GET', path: '/api/v2/models' },
+        ];
+    }
+
     /** Streaming chat completions. Yields chunks as they arrive. */
     async *chatStream(
         model: string,
         messages: ChatMessage[],
         options?: { temperature?: number; max_tokens?: number; system_prompt?: string; signal?: AbortSignal; reasoning?: boolean },
     ): AsyncGenerator<ChatCompletionChunk> {
-        const chatPath = process.env.KOB_API_CHAT_PATH || '/api/v2/chat/completions';
+        const chatPath = this.resolveChatPath();
         const maxRetries = 5;
         let attempt = 0;
 
@@ -156,13 +178,7 @@ export class KobApiClient {
 
     /** Fetch the list of available models. Tries a couple of known shapes. */
     async listModels(): Promise<ModelInfo[]> {
-        const modelsPath = process.env.KOB_API_MODELS_PATH;
-        const tryEndpoints: { method: 'POST' | 'GET'; path: string }[] = modelsPath
-            ? [{ method: 'POST', path: modelsPath }]
-            : [
-                { method: 'POST', path: '/api/models' },
-                { method: 'GET', path: '/api/v2/models' },
-            ];
+        const tryEndpoints = this.resolveModelsEndpoints();
         let lastErr: unknown;
         for (const ep of tryEndpoints) {
             try {
