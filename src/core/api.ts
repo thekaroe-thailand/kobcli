@@ -204,9 +204,17 @@ export class KobApiClient {
 function normalizeModels(data: unknown): ModelInfo[] {
     const out: ModelInfo[] = [];
     const d = data as Record<string, unknown>;
+    // OpenAI format: { object: "list", data: [{ id: "...", ... }] }
+    if (Array.isArray(d?.data)) {
+        for (const m of d.data as any[]) {
+            if (m.id) out.push({ id: m.id, display_name: m.display_name || m.id });
+        }
+    }
+    // Generic format: { models: [...] }
     if (Array.isArray(d?.models)) {
         for (const m of d.models as ModelInfo[]) out.push(m);
     }
+    // KOB format: { providers: [{ provider, models: [...] }] }
     if (Array.isArray(d?.providers)) {
         for (const p of d.providers as any[]) {
             for (const m of p.models || []) {
