@@ -162,11 +162,15 @@ export async function runRepl(version: string): Promise<void> {
             break;
         }
         if (turn.connectionError) {
-            // Offer a one-key retry instead of forcing the user to retype.
-            const hint = chalk.hex(C.amber)('  Press ') + chalk.bold('R') + chalk.hex(C.amber)(' to retry, any other key to continue.');
-            console.log(hint);
-            if (await waitForRetryKey()) {
+            // Auto-retry after 10 seconds so the user doesn't have to manually retype.
+            console.log(chalk.hex(C.amber)(`  Connection failed. Auto-retrying in 10s... (press any key to skip)`));
+            const shouldRetry = await waitWithCountdown(10);
+            if (shouldRetry) {
                 const retry = await runTurn(state, trimmed, cfg, (u) => { lastUndo = u; });
+                if (retry.exitRequested) {
+                    banner('See you next time! · แล้วเจอกันนะ', C.cyan);
+                    break;
+                }
                 state = retry.state;
             }
         }
@@ -176,6 +180,47 @@ export async function runRepl(version: string): Promise<void> {
 function isRetriableErrorMessage(msg: string | undefined): boolean {
     if (!msg) return false;
     return msg.includes('Connection failed') || msg.includes('fetch failed') || msg.includes('socket');
+}
+
+/**
+ * Wait for up to `seconds` seconds. Resolves with `true` when the timer
+ * expires, or `false` if the user presses any key to skip the wait.
+ */
+function waitWithCountdown(seconds: number): Promise<boolean> {
+    return new Promise((resolve) => {
+        if (!process.stdin.isTTY) {
+            setTimeout(() => resolve(true), seconds * 1000);
+            return;
+        }
+        const stdin = process.stdin;
+        const stdinSnapshot = snapshotStdin(stdin);
+        let rawGuardTimer: ReturnType<typeof setInterval> | null = null;
+        let resolved = false;
+
+        const cleanup = () => {
+            if (resolved) return;
+            resolved = true;
+            if (rawGuardTimer) clearInterval(rawGuardTimer);
+            stdin.off('data', onData);
+            restoreStdin(stdin, stdinSnapshot);
+        };
+
+        const onData = (_chunk: Buffer) => {
+            cleanup();
+            resolve(false);
+        };
+
+        ensureInteractiveStdin(stdin);
+        rawGuardTimer = setInterval(() => {
+            if (!resolved) ensureInteractiveStdin(stdin);
+        }, 250);
+        stdin.on('data', onData);
+
+        setTimeout(() => {
+            cleanup();
+            resolve(true);
+        }, seconds * 1000);
+    });
 }
 
 /**
@@ -217,26 +262,29 @@ async function runTurn(
     io.spinner.start('Thinking');
     io.enableEsc();
 
-    const result = await handleSubmit(state, input, {
-        signal: io.ac.signal,
-        onProgress: (label) => io.spinner.setText(label),
-        onReadFile: (i) => { io.spinner.stop(); reportRead(i.path, i.lines); io.spinner.start('Working'); },
-        onFileChange: (fc) => { io.spinner.stop(); reportFileChange(fc, showDiff); io.spinner.start('Working'); },
-        onStrReplace: (r) => { io.spinner.stop(); reportStrReplace(r, showDiff); io.spinner.start('Working'); },
-        onCommand: (r) => { io.spinner.stop(); reportCommand(r); io.spinner.start('Working'); },
-        approveCommand: async (cmd, kind) => {
-            if (kind === 'readonly' && cfg?.autoApproveReadonly) return true;
-            io.spinner.stop();
-            io.disableEsc();
-            const ok = await confirmCommand(cmd, kind === 'dangerous' ? 'dangerous' : 'mutating');
-            io.enableEsc();
-            io.spinner.start('Working');
-            return ok;
-        },
-    });
-
-    io.spinner.stop();
-    io.disableEsc();
+    let result: Awaited<ReturnType<typeof handleSubmit>>;
+    try {
+        result = await handleSubmit(state, input, {
+            signal: io.ac.signal,
+            onProgress: (label) => io.spinner.setText(label),
+            onReadFile: (i) => { io.spinner.stop(); reportRead(i.path, i.lines); io.spinner.start('Working'); },
+            onFileChange: (fc) => { io.spinner.stop(); reportFileChange(fc, showDiff); io.spinner.start('Working'); },
+            onStrReplace: (r) => { io.spinner.stop(); reportStrReplace(r, showDiff); io.spinner.start('Working'); },
+            onCommand: (r) => { io.spinner.stop(); reportCommand(r); io.spinner.start('Working'); },
+            approveCommand: async (cmd, kind) => {
+                if (kind === 'readonly' && cfg?.autoApproveReadonly) return true;
+                io.spinner.stop();
+                io.disableEsc();
+                const ok = await confirmCommand(cmd, kind === 'dangerous' ? 'dangerous' : 'mutating');
+                io.enableEsc();
+                io.spinner.start('Working');
+                return ok;
+            },
+        });
+    } finally {
+        io.spinner.stop();
+        io.disableEsc();
+    }
 
     if (io.exitRequested) {
         return { state: result.state, connectionError: false, exitRequested: true };

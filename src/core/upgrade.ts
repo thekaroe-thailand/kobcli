@@ -16,17 +16,20 @@ function shouldHideLine(line: string): boolean {
     return HIDDEN_LINE_PATTERNS.some((pattern) => pattern.test(trimmed));
 }
 
-function renderProgress(startMs: number, tick: number): void {
+function renderProgress(startMs: number, done: boolean = false): void {
     if (!process.stdout.isTTY) return;
     const width = 20;
-    const head = tick % (width + 5);
+    const elapsed = Date.now() - startMs;
+    // Simulate progress: fill up to 95% over 30s, then hold; jump to 100% when done.
+    const rawPct = done ? 100 : Math.min(95, Math.round((elapsed / 30_000) * 95));
+    const filled = Math.round((rawPct / 100) * width);
     let bar = '';
-    for (let i = 0; i < width; i += 1) {
-        if (i >= head - 4 && i <= head) bar += '=';
-        else bar += ' ';
+    for (let i = 0; i < width; i++) {
+        bar += i < filled ? '=' : ' ';
     }
-    const elapsed = ((Date.now() - startMs) / 1000).toFixed(1);
-    const line = `\r  ${chalk.hex(C.cyan)('[' + bar + ']')} ${chalk.hex(C.cyan)('Upgrading KOB CLI')}${chalk.dim(` · ${elapsed}s`)}`;
+    const elapsedStr = (elapsed / 1000).toFixed(1);
+    const pctStr = String(rawPct).padStart(3);
+    const line = `\r  ${chalk.hex(C.cyan)('[' + bar + ']')} ${chalk.hex(C.cyan)(pctStr + '%')} ${chalk.hex(C.cyan)('Upgrading KOB CLI')}${chalk.dim(` · ${elapsedStr}s`)}`;
     process.stdout.write(line + '\x1b[K');
 }
 
@@ -63,10 +66,8 @@ export async function runUpgrade(): Promise<UpgradeResult> {
     let stdoutBuffer = '';
     let stderrBuffer = '';
     const startMs = Date.now();
-    let tick = 0;
     const timer = setInterval(() => {
-        tick += 1;
-        renderProgress(startMs, tick);
+        renderProgress(startMs);
     }, 90);
 
     child.stdout?.setEncoding('utf8');
@@ -93,6 +94,7 @@ export async function runUpgrade(): Promise<UpgradeResult> {
             clearInterval(timer);
             if (stdoutBuffer && !shouldHideLine(stdoutBuffer)) visibleOutput.push(stdoutBuffer);
             if (stderrBuffer && !shouldHideLine(stderrBuffer)) visibleOutput.push(stderrBuffer);
+            renderProgress(startMs, true);
             clearProgress();
             resolve({ ok: code === 0, exitCode: code ?? -1, visibleOutput });
         });
