@@ -528,6 +528,7 @@ async function pickSearchableOption(
     options: SelectOption[],
     current?: string,
 ): Promise<string | null> {
+    ensureInteractiveStdin(process.stdin);
     const result = await autocomplete({
         message,
         options,
@@ -579,6 +580,7 @@ export async function pickModel(current: string): Promise<string | null> {
     }
 
     if (!models.length) {
+        ensureInteractiveStdin(process.stdin);
         const manual = await text({ message: 'Enter model id (provider/model)', initialValue: current });
         if (isCancel(manual) || !manual) return null;
         return formatModel(sanitizeInput(manual as string));
@@ -597,6 +599,11 @@ export async function pickModel(current: string): Promise<string | null> {
             hint: undefined,
         };
     });
+
+    // Ensure stdin is in a clean interactive state before prompting.
+    // The previous promptInput may have left it in cooked/paused mode.
+    ensureInteractiveStdin(process.stdin);
+
     const result = options.length > 12
         ? await pickSearchableOption('Select AI model', options, current)
         : await select({ message: 'Select AI model', options, initialValue: current, maxItems: 12 });
@@ -665,6 +672,7 @@ export async function promptConfigText(
 }
 
 export async function promptConfigPassword(message: string): Promise<string | null> {
+    ensureInteractiveStdin(process.stdin);
     const result = await password({ message });
     if (isCancel(result)) return null;
     const val = result as string;
@@ -678,6 +686,7 @@ export async function promptConfigPassword(message: string): Promise<string | nu
 export async function editConfig(): Promise<boolean> {
     const env = readEnvFile();
     console.log('  ' + chalk.dim('editing ' + describeEnvPath()));
+    ensureInteractiveStdin(process.stdin);
 
     const key = await password({ message: 'API key (kob_xxx:token) — leave blank to keep current' });
     if (isCancel(key)) return false;

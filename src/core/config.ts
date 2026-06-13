@@ -31,6 +31,12 @@ export function getConfig(options?: { quiet?: boolean }): CliConfig | null {
         || 'true'
     ).toLowerCase() !== 'false';
 
+    const autoApproveMutating = (
+        fileEnv.KOB_AUTO_APPROVE_MUTATING
+        || process.env.KOB_AUTO_APPROVE_MUTATING
+        || ''
+    ).toLowerCase() === 'true';
+
     if (!rawKey) {
         if (!options?.quiet) {
             console.error('\n  ✗ KOB_API_KEY is not set.');
@@ -51,6 +57,7 @@ export function getConfig(options?: { quiet?: boolean }): CliConfig | null {
         modelId: modelId || undefined,
         maxTokens,
         autoApproveReadonly,
+        autoApproveMutating,
     };
 }
 

@@ -12,6 +12,7 @@ export interface CliConfig {
     modelId?: string;
     maxTokens: number;
     autoApproveReadonly: boolean;
+    autoApproveMutating: boolean;
 }
 
 export interface ModeInfo {

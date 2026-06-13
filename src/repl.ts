@@ -275,6 +275,7 @@ async function runTurn(
             onCommand: (r) => { io.spinner.stop(); reportCommand(r); io.spinner.start('Working'); },
             approveCommand: async (cmd, kind) => {
                 if (kind === 'readonly' && cfg?.autoApproveReadonly) return true;
+                if (kind === 'mutating' && cfg?.autoApproveMutating) return true;
                 io.spinner.stop();
                 io.disableEsc();
                 const ok = await confirmCommand(cmd, kind === 'dangerous' ? 'dangerous' : 'mutating');
