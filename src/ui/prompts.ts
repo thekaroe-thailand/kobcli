@@ -609,62 +609,199 @@ export async function pickModel(current: string): Promise<string | null> {
         return formatModel(picked as string);
     }
 
-    // For large model lists, show popular models then let user type/paste model id.
-    console.log(`\n  ${chalk.bold(`${options.length} models available`)} — top picks:`);
-    const popularIds = new Set([
-        'deepseek/deepseek-v4-flash', 'deepseek/deepseek-v4-pro',
-        'anthropic/claude-fable-5', 'anthropic/claude-opus-4.8-fast',
-        'openai/gpt-4.1', 'openai/gpt-4.1-mini',
-    ]);
-    const popular = options.filter(o => popularIds.has(o.value));
-    const others = options.filter(o => !popularIds.has(o.value));
-    const topN = [...popular, ...others].slice(0, 20);
-    for (const o of topN) {
-        const marker = o.value === current ? chalk.hex(C.green)('●') : ' ';
-        console.log(`   ${marker} ${o.label}`);
-    }
-    console.log('');
+    // For large model lists, show models with left rail and real-time search.
+    return await pickModelWithSearch(options, current);
+}
 
-    const query = await text({
-        message: 'Type/paste model id or name to search',
-        placeholder: 'e.g. deepseek, claude, qwen, or paste full id',
-        initialValue: current,
+async function pickModelWithSearch(options: SelectOption[], current: string): Promise<string | null> {
+    const stdin = process.stdin;
+    const stdout = process.stdout;
+    const stdinSnapshot = snapshotStdin(stdin);
+    let query = '';
+    let cursor = 0;
+    let cursorVisible = true;
+    let settled = false;
+    let selectedIndex = 0;
+    let scrollOffset = 0;
+    let renderedLines = 0;
+    let resolvePromise: ((result: string | null) => void) | null = null;
+
+    const RAIL = chalk.hex(C.slate)('│');
+    const railLine = (text: string) => `  ${RAIL} ${text}`;
+
+    const getFiltered = () => {
+        if (!query.trim()) return options;
+        const lower = query.toLowerCase();
+        return options.filter(o =>
+            o.value.toLowerCase().includes(lower) ||
+            o.label.toLowerCase().includes(lower)
+        );
+    };
+
+    const maxVisible = () => {
+        const termRows = process.stdout.rows || 24;
+        return Math.max(5, termRows - 10);
+    };
+
+    const render = () => {
+        if (renderedLines > 1) {
+            readline.moveCursor(stdout, 0, -(renderedLines - 1));
+        }
+        readline.cursorTo(stdout, 0);
+        readline.clearScreenDown(stdout);
+
+        const filtered = getFiltered();
+        const before = query.slice(0, cursor);
+        const after = query.slice(cursor);
+        const cursorChar = cursorVisible ? chalk.hex(C.cyan)('█') : '';
+        const searchPrompt = `${chalk.hex(C.cyan)('◆')} ${chalk.hex(C.slate)('Search:')} ${chalk.white(before)}${cursorChar}${chalk.white(after)}`;
+        
+        console.log(railLine(searchPrompt));
+        console.log(railLine(chalk.dim(`${filtered.length} models`)));
+        console.log(railLine(chalk.dim('─'.repeat(40))));
+
+        const visible = maxVisible();
+        const clampedIndex = Math.min(selectedIndex, filtered.length - 1);
+        
+        if (clampedIndex < scrollOffset) {
+            scrollOffset = clampedIndex;
+        } else if (clampedIndex >= scrollOffset + visible) {
+            scrollOffset = clampedIndex - visible + 1;
+        }
+
+        const toShow = filtered.slice(scrollOffset, scrollOffset + visible);
+        for (let i = 0; i < toShow.length; i++) {
+            const opt = toShow[i]!;
+            const globalIndex = scrollOffset + i;
+            const isCurrent = opt.value === current;
+            const isSelected = globalIndex === clampedIndex;
+            
+            const marker = isSelected ? chalk.hex(C.cyan)('▸') : ' ';
+            const currentMark = isCurrent ? chalk.hex(C.green)('●') : ' ';
+            const line = isSelected 
+                ? chalk.bgHex('#1a3a4a').white(opt.label)
+                : chalk.hex(C.slate)(opt.label);
+            
+            console.log(railLine(`${marker} ${currentMark} ${line}`));
+        }
+
+        if (filtered.length > visible) {
+            console.log(railLine(chalk.dim(`${scrollOffset + 1}-${scrollOffset + toShow.length} of ${filtered.length}`)));
+        }
+
+        console.log(railLine(chalk.dim('↑↓ navigate · Enter select · Esc cancel')));
+
+        renderedLines = 4 + toShow.length + (filtered.length > visible ? 1 : 0) + 1;
+    };
+
+    const cleanup = () => {
+        if (settled) return;
+        settled = true;
+        stdin.off('keypress', onKeypress);
+        restoreStdin(stdin, stdinSnapshot);
+        stdout.write('\x1b[?25h');
+    };
+
+    const finish = (result: string | null) => {
+        cleanup();
+        readline.cursorTo(stdout, 0);
+        readline.moveCursor(stdout, 0, -renderedLines);
+        readline.clearScreenDown(stdout);
+        if (resolvePromise) {
+            resolvePromise(result);
+        }
+    };
+
+    const onKeypress = (sequence: string, key: { name?: string; ctrl?: boolean }) => {
+        if (key.ctrl && key.name === 'c') {
+            finish(null);
+            return;
+        }
+        if (key.name === 'escape') {
+            finish(null);
+            return;
+        }
+        if (key.name === 'return' || key.name === 'enter') {
+            const filtered = getFiltered();
+            const clampedIndex = Math.min(selectedIndex, filtered.length - 1);
+            const chosen = filtered[clampedIndex];
+            if (chosen) {
+                finish(formatModel(chosen.value));
+            }
+            return;
+        }
+        if (key.name === 'up') {
+            selectedIndex = Math.max(0, selectedIndex - 1);
+            render();
+            return;
+        }
+        if (key.name === 'down') {
+            const filtered = getFiltered();
+            selectedIndex = Math.min(filtered.length - 1, selectedIndex + 1);
+            render();
+            return;
+        }
+        if (key.name === 'backspace') {
+            if (cursor > 0) {
+                query = query.slice(0, cursor - 1) + query.slice(cursor);
+                cursor -= 1;
+                selectedIndex = 0;
+                scrollOffset = 0;
+            }
+            render();
+            return;
+        }
+        if (key.name === 'delete') {
+            if (cursor < query.length) {
+                query = query.slice(0, cursor) + query.slice(cursor + 1);
+                selectedIndex = 0;
+                scrollOffset = 0;
+            }
+            render();
+            return;
+        }
+        if (key.name === 'home') {
+            cursor = 0;
+            render();
+            return;
+        }
+        if (key.name === 'end') {
+            cursor = query.length;
+            render();
+            return;
+        }
+        if (key.name === 'left') {
+            cursor = Math.max(0, cursor - 1);
+            render();
+            return;
+        }
+        if (key.name === 'right') {
+            cursor = Math.min(query.length, cursor + 1);
+            render();
+            return;
+        }
+
+        if (sequence === undefined || sequence === null) return;
+        if (sequence.startsWith('\u001b')) return;
+        if (sequence === '' || sequence.length === 0) return;
+
+        query = query.slice(0, cursor) + sequence + query.slice(cursor);
+        cursor += sequence.length;
+        selectedIndex = 0;
+        scrollOffset = 0;
+        render();
+    };
+
+    readline.emitKeypressEvents(stdin);
+    ensureInteractiveStdin(stdin);
+    stdout.write('\x1b[?25l');
+    stdin.on('keypress', onKeypress);
+    
+    render();
+
+    return await new Promise<string | null>((resolve) => {
+        resolvePromise = resolve;
     });
-    if (isCancel(query)) return null;
-    const q = (query as string).trim();
-    if (!q) return null;
-
-    // Exact match
-    const exact = options.find(o => o.value === q);
-    if (exact) return formatModel(exact.value);
-
-    // Fuzzy match
-    const lower = q.toLowerCase();
-    const matches = options.filter(o =>
-        o.value.toLowerCase().includes(lower) ||
-        o.label.toLowerCase().includes(lower)
-    );
-
-    if (matches.length === 0) {
-        console.log('  ' + chalk.hex(C.amber)(`No match for "${q}". Using as-is.`));
-        return formatModel(q);
-    }
-
-    if (matches.length === 1) {
-        return formatModel(matches[0]!.value);
-    }
-
-    // Multiple matches — show and pick
-    console.log(`\n  ${matches.length} matches for "${q}":`);
-    const show = matches.slice(0, 12);
-    const selectOptions = show.map(o => ({ value: o.value, label: o.label, hint: undefined }));
-    const picked = await select({
-        message: 'Pick one',
-        options: selectOptions,
-        maxItems: 10,
-    });
-    if (isCancel(picked)) return null;
-    return formatModel(picked as string);
 }
 
 export async function pickProject(projects: { name: string; path: string }[]): Promise<string | null> {

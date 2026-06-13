@@ -3,117 +3,124 @@ title: "09 — Models Picker"
 type: reference
 status: active
 created: 2026-06-05
-updated: 2026-06-05
+updated: 2026-06-13
 tags:
   - kob-cli
   - models
   - palette
   - search
+  - rail
 ---
 
 # 09 — Models Picker
 
-`/models` opens `ModelPicker` ([src/ui/model-picker.tsx](file:///c:/Users/controlc/MyDocuments/project_of_customer/kobai-website/kob-cli/src/ui/model-picker.tsx)) — a searchable overlay that lists every model in the KOB AI catalog and lets the user pick one to switch to.
+`/models` opens the model picker — a searchable overlay with a left rail border that lists every model in the KOB AI catalog and lets the user pick one to switch to.
+
+## Implementation
+
+Located in `src/ui/prompts.ts`:
+- `pickModel()` — entry point, fetches models, delegates to search UI for large lists
+- `pickModelWithSearch()` — real-time search with left rail, arrow navigation, and Enter/Esc handling
 
 ## Data source
 
-- Endpoint: `POST /api/models`
-- Returns `{ providers: ProviderModels[] }` (see `[[types]]`).
-- Each provider has `provider` (e.g. `DeepSeek`) and `models: AIModel[]` where `AIModel = { modelId, displayName, inputPricePer1M, outputPricePer1M, ... }`.
-- The picker flattens everything into one `FlatModel[]` for unified searching.
+- Endpoint: `POST /api/models` (via `KobApiClient.listModels()`)
+- Returns normalized `ModelInfo[]` array
+- Each model has `id`, `displayName`, `provider`, `inputPricePer1M`, `outputPricePer1M`
+
+## UI Design (Large Lists > 12 Models)
+
+### Left Rail Border
+All output lines are prefixed with a left rail `│` for visual consistency with the conversation frame:
+
+```
+  │ ◆ Search: deepseek█
+  │ 19 models
+  │ ───────────────────────────────────────
+  │ ▸ ● deepseek-v4-pro  [kob]  in $0.27/1M | out $1.10/1M
+  │   ○ deepseek-v4-flash  [kob]  in $0.14/1M | out $0.56/1M
+  │   ○ qwen3.7-max  [kob]  in $0.50/1M | out $2.00/1M
+  │ ...
+  │ 1-12 of 19
+  │ ↑↓ navigate · Enter select · Esc cancel
+```
+
+### Real-time Search
+- **Live filtering** as you type — searches model ID and label (case-insensitive substring)
+- **Arrow keys** (↑↓) navigate filtered results
+- **Enter** selects highlighted model
+- **Esc** cancels and returns to REPL
+- **Scroll indicator** shows position when list exceeds visible rows
+- **Current model** marked with green `●`
+- **Selected item** highlighted with cyan `▸` and background
+
+### Navigation
+
+| Key | Effect |
+|-----|--------|
+| Printable character | append to search query, reset selection to top |
+| `Backspace` / `Delete` | remove character from query |
+| `↑` | selection up |
+| `↓` | selection down |
+| `Enter` | pick the highlighted model |
+| `Esc` | cancel and return to REPL |
+| `Ctrl+C` | cancel and return to REPL |
+
+### Small Lists (≤ 12 Models)
+Uses `@clack/prompts` `select()` widget directly — no custom search UI needed.
 
 ## Lifecycle
 
 ```
-mount → spinner "Fetching model catalog…"
-       ↓
-       POST /api/models  (with current API key from getConfig())
-       ↓
-       success → render the searchable list
-       failure → render red error line
+fetch models → spinner "Fetching models"
+             ↓
+         ≤ 12 models? → @clack select widget
+             ↓
+         > 12 models → pickModelWithSearch()
+             ↓
+         render rail + search prompt
+             ↓
+         user types → filter + re-render
+             ↓
+         Enter → formatModel() + return
+         Esc → return null
 ```
-
-The request is `useEffect`-scoped; an `alive` flag prevents setting state after unmount.
-
-## Search
-
-The query is `value` (whatever the user typed into `InputBox`, after `/models` is filled/entered). Wait — actually the picker has **its own** input handling. It runs its own `useInput` and treats every printable keystroke as a search-character (`text` is appended to `query`). The user's main `InputBox` is `isActive: false` while the picker is open, so it doesn't interfere.
-
-Filter is case-insensitive `startsWith` against `displayName`, `modelId`, **or** `provider`:
-
-```ts
-flat.filter(m =>
-    m.displayName.toLowerCase().includes(q) ||
-    m.modelId.toLowerCase().includes(q) ||
-    m.provider.toLowerCase().includes(q)
-);
-```
-
-We use `includes` (not `startsWith`) so the query is a true substring search, which is what users expect for "hundreds of models".
-
-## Navigation
-
-| Key | Effect |
-|-----|--------|
-| Printable character | append to `query` |
-| `Backspace` / `Delete` | drop last char from `query` |
-| `↑` | selection up |
-| `↓` | selection down |
-| `PgUp` | selection -12 |
-| `PgDn` | selection +12 |
-| `Enter` | pick the highlighted model (calls `onSelect`) |
-| `Esc` | close (calls `onClose`) |
-
-The list area is fixed at 12 visible rows; if the filtered set is larger, the picker shows `<start>–<end> of <total>` and centers the selection by re-anchoring the window on every move.
-
-## Display
-
-Each row:
-
-```
-▶  <displayName>  ●current  <provider>  $0.27/$1.10/M  <modelId>
-```
-
-- The `▶` marker is `c.brand` for the selected row, dim otherwise.
-- `●current` (green) is appended when `modelId === currentModel`.
-- Provider name is padded to 10 chars to align the price column.
-- Prices are colored `c.yellow` (they draw the eye).
 
 ## On select
 
-In `CodeEngine`:
+In `src/repl.ts`:
 
 ```ts
-onSelect={(modelId, displayName) => {
-    setModel(modelId);
-    configRef.current = { ...configRef.current, modelId };
-    setPalette(null);
-    setExchanges([]);
-    messagesRef.current = [];
-    exchangesLenRef.current = 0;
-    showBanner(`◆ model → ${displayName} (${modelId})`);
-}}
+case 'models': {
+    const m = await pickModel(state.model);
+    if (m) { state = { ...state, model: m }; banner(`Model → ${m}`, C.amber); }
+    return { state };
+}
 ```
 
-Three things happen:
-1. The active `model` state is updated (header + model badge in the right panel change immediately).
-2. The session is **cleared** — switching models mid-conversation would mix contexts that don't apply, so we wipe history.
-3. A banner shows the new model name for ~2 seconds.
-
-`configRef.current.modelId` is also updated so the *next* `handleSubmit` uses the right model.
+- Updates `state.model`
+- Shows confirmation banner: `◆ Model → deepseek/deepseek-v4-pro`
 
 ## Failure modes
 
-- **Network error** → red error line: `✗ <message>`. User can press `Esc` to leave the picker and try again later.
-- **Empty result** → `No models match "<query>".` in `c.yellow`. The query can be edited to widen the search.
-- **No providers in response** → treated like an empty catalog; the `Enter` key does nothing.
+- **Network error** → spinner shows "Could not fetch models", falls back to manual text input
+- **Empty catalog** → manual text input for model ID
+- **No search matches** → shows "0 models", user can clear query to see all
 
 ## Adding filters
 
-The picker is currently a single text field. If you want to add a separate provider filter:
+The picker currently supports a single text search across model ID and label. To add additional filters (e.g., provider-only filter):
 
-1. Add a `providerFilter` state in `ModelPicker`.
-2. Bind a hotkey (e.g. `p` to cycle providers) in `useInput`.
-3. Apply it in the `filtered` `useMemo`.
+1. Add a `providerFilter` state in `pickModelWithSearch()`
+2. Bind a hotkey in `onKeypress` to toggle provider filter
+3. Apply it in the `getFiltered()` function
 
-The data shape and `onSelect` contract should stay the same.
+## 2026-06-13 Update: Left Rail + Real-time Search
+
+Added left rail border (`│`) and real-time search functionality to the model picker for large model lists (> 12 models):
+
+- **Left rail**: All model list output now uses `railLine()` helper that prefixes each line with `  │ ` for visual consistency with conversation frames
+- **Real-time search**: New `pickModelWithSearch()` function provides live filtering as you type, arrow key navigation, scroll indicator, and Enter/Esc handling
+- **Search scope**: Case-insensitive substring search across model ID and full label (including provider and pricing)
+- **Visual markers**: Current model marked with green `●`, selected item with cyan `▸` and highlighted background
+- **Navigation hint**: Bottom line shows `↑↓ navigate · Enter select · Esc cancel`
